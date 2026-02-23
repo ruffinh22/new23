@@ -1,0 +1,285 @@
+@startuml SGDRA Backend Architecture - Hiérarchie et Scénarios
+
+!define BGCOLOR_CLASS #FAFAFA
+!define BGCOLOR_ENTITY #FFFFFF
+!define FONTNAME Courier
+!define FONTSIZE 10
+
+skinparam classBackgroundColor BGCOLOR_ENTITY
+skinparam classArrowColor #000080
+skinparam classBorderColor #000000
+skinparam arrowColor #000080
+skinparam defaultTextAlignment center
+
+' ============================================
+' USER CLASS
+' ============================================
+class User {
+    ⊕ id: INT <PK>
+    ⊕ pole_id: INT <FK>
+    ⊕ branch_id: INT <FK>
+    ⊕ department_id: INT <FK>
+    ⊕ role: ENUM
+    ⊕ matricule: VARCHAR(20) <UK>
+    ⊕ email: VARCHAR(255) <UK>
+    ⊕ first_name: VARCHAR(100)
+    ⊕ last_name: VARCHAR(100)
+    ⊕ is_active: BOOLEAN
+    ⊕ date_joined: DATETIME
+}
+
+note right of User
+  === ROLES & PERMISSIONS ===
+  AGENT: pole, branch, department ≠ NULL
+         → Upload documents au Service
+         → Voir ses propres docs
+  
+  SERVICE_MANAGER: role='SERVICE_MANAGER'
+         → Valide docs du Service
+         → Accès view: Service + descendants
+  
+  FILIALE_MANAGER: role='FILIALE_MANAGER'
+         → Supervise tous Services Filiale
+         → Accès view: Filiale + services
+  
+  POLE_MANAGER: role='POLE_MANAGER'
+         → Vue stratégique: tous Services
+         → Escalades, reporting
+  
+  ADMIN: Accès complet + gestion hiérarchie
+end note
+
+' ============================================
+' FOLDER CLASS (Hiérarchie unifiée)
+' ============================================
+class Folder {
+    ⊕ id: INT <PK>
+    ⊕ parent_id: INT <FK>
+    ⊕ created_by_id: INT <FK>
+    ⊕ folder_type: ENUM
+    ⊕ is_active: BOOLEAN
+    ⊕ name: VARCHAR(255)
+    ⊕ code: VARCHAR(20) <UK>
+    ⊕ country_code: VARCHAR(2)
+}
+
+note right of Folder
+  === HIÉRARCHIE UNIFIÉE ===
+  folder_type: pole, filiale, service,
+  sub_service (legacy: branch, dept)
+  
+  === STRUCTURE STRICTE ===
+  Niveau 0: pole (parent=NULL, code="BJ")
+  Niveau 1: filiale (parent=pole)
+  Niveau 2: service (parent=filiale)
+  Niveau 3+: sub_service (parent=service)
+  
+  === SCÉNARIO ACCESS ===
+  User.pole_id = Folder(type='pole')
+  User.branch_id = Folder(type='filiale')
+  User.department_id = Folder(type='service')
+  
+  Documents routés auto vers Service
+  mais peuvent être dans Pôle/Filiale aussi
+end note
+
+' ============================================
+' ROUTING RULE CLASS
+' ============================================
+class RoutingRule {
+    ⊕ id: INT <PK>
+    ⊕ destination_folder_id: INT <FK>
+    ⊕ conditions: JSON
+    ⊕ priority: INT
+    ⊕ name: VARCHAR(255)
+}
+
+' ============================================
+' DOCUMENT SPECIFICATION CLASS
+' ============================================
+class DocumentSpecification {
+    ⊕ id: INT <PK>
+    ⊕ max_file_size_mb: INT
+    ⊕ document_type: VARCHAR(30) <UK>
+    ⊕ display_name: VARCHAR(100)
+    ⊕ allowed_formats: VARCHAR(255)
+}
+
+' ============================================
+' DOCUMENT CLASS
+' ============================================
+class Document {
+    ⊕ id: INT <PK>
+    ⊕ file: FILE
+    ⊕ agent_id: INT <FK>
+    ⊕ folder_id: INT <FK>
+    ⊕ specification_id: INT <FK>
+    ⊕ status: ENUM
+    ⊕ document_type: VARCHAR(30)
+    ⊕ title: VARCHAR(255)
+    ⊕ created_at: DATETIME
+    ⊕ updated_at: DATETIME
+}
+
+' ============================================
+' DOCUMENT VALIDATION RESULT CLASS
+' ============================================
+class DocumentValidationResult {
+    ⊕ id: INT <PK>
+    ⊕ document_id: INT <FK>
+    ⊕ status: ENUM
+    ⊕ errors: JSON
+    ⊕ warnings: JSON
+}
+
+' ============================================
+' NOTIFICATION CLASS
+' ============================================
+class Notification {
+    ⊕ id: INT <PK>
+    ⊕ recipient_id: INT <FK>
+    ⊕ document_id: INT <FK>
+    ⊕ notification_type: ENUM
+    ⊕ priority: ENUM
+    ⊕ title: VARCHAR(255)
+    ⊕ message: TEXT
+    ⊕ is_read: BOOLEAN
+    ⊕ created_at: DATETIME
+}
+
+' ============================================
+' RELATIONSHIPS
+' ============================================
+
+' User references Folder hierarchy
+User "0..*" --> "1" Folder : pole (type='pole')
+User "0..*" --> "1" Folder : branch (type='filiale')
+User "0..*" --> "0..1" Folder : department (type='service')
+
+' User creates Documents
+User "1" --> "0..*" Document : creates
+
+' User creates Folders
+User "1" --> "0..*" Folder : creates
+
+' Folder self-reference (parent-child hierarchy)
+Folder "1" --> "0..*" Folder : parent-child
+
+' Folder contains Documents
+Folder "1" --> "0..*" Document : contains
+
+' RoutingRule configures destination Folder
+RoutingRule "1" --> "1" Folder : destination
+
+' DocumentSpecification defines Document
+DocumentSpecification "1" --> "0..*" Document : defines
+
+' Document validates to DocumentValidationResult
+Document "1" --> "0..1" DocumentValidationResult : validates
+
+' Document triggers Notification
+Document "1" --> "0..*" Notification : triggers
+
+' User receives Notification
+User "1" --> "0..*" Notification : receives
+
+' ============================================
+' DETAILED FLOW SCENARIOS
+' ============================================
+
+note as SCENARIO_OVERVIEW
+  === STRUCTURE HIÉRARCHIQUE ===
+  Pôle (ex: "Commercial")
+    └─ Filiale (ex: "Bénin")
+       └─ Service (ex: "Ventes")
+          └─ Sous-service (ex: "Support clients")
+end note
+
+note as FLUX1
+  FLUX 1: AGENT UPLOAD & VALIDATION
+  
+  AGENT (User.role=AGENT)
+  ├─ Step 1: Upload document → POST /documents/
+  ├─ Step 2: Signal Django post_save
+  ├─ Step 3: Assigne folder_id = User.department
+  └─ Step 4: SERVICE_MANAGER notifié
+
+  SERVICE_MANAGER (User.role=SERVICE_MANAGER)
+  ├─ Step 5: Revue document (GET /documents/{id}/)
+  ├─ Step 6a: Approval → PATCH status='VALIDE'
+  ├─ Step 6b: Rejection → PATCH status='REJETE'
+  └─ Step 7: AGENT reçoit notification
+end note
+
+note as FLUX2
+  FLUX 2: PERMISSIONS & HIERARCHY
+  
+  AGENT Jean:
+    pole_id = 1 | branch_id = 2 | department_id = 3
+    ✓ READ docs in Service | ✓ CREATE docs
+
+  SERVICE_MANAGER Pierre:
+    pole_id = 1 | branch_id = 2 | department_id = 3
+    ✓ READ/WRITE Service docs | ✓ VALIDATE workflow
+
+  FILIALE_MANAGER Marie:
+    pole_id = 1 | branch_id = 2 | department_id = NULL
+    ✓ READ all Filiale docs | ✓ ESCALATE to Pole
+end note
+
+note as FLUX3
+  FLUX 3: AUTO-ROUTING
+  
+  1. RoutingRule.conditions match
+  2. Document.folder_id → destination_folder
+  3. Status → EN_COURS automatically
+  4. Admins notified + Archive workflow
+
+  Example Rule:
+  {document_type: "FACTURES_EXCEL", branch_id: 2}
+  → destination_folder_id: 6 (Comptabilité)
+end note
+
+legend right
+  <#FFFFFF>
+  === SYMBOLES ===
+  ⊕ Primary Key (PK)
+  <FK> Foreign Key
+  <UK> Unique Key
+  ENUM Enumeration
+  
+  === CAS D'USAGE ===
+  
+  1️⃣ AGENT UPLOAD:
+  - User.pole, branch, department = assigné
+  - Upload document → NOUVEAU
+  - Signal→ folder=User.department
+  - SERVICE_MANAGER notifié
+  
+  2️⃣ SERVICE_MANAGER:
+  - Voit docs de son Service
+  - Valide (status→VALIDE)
+  - Rejette (status→REJETE)
+  - Notifications envoyées
+  
+  3️⃣ FILIALE_MANAGER:
+  - Supervise Services Filiale
+  - Vue agrégée par Service
+  - Escalades si besoin
+  - Rapports Filiale
+  
+  4️⃣ ROUTAGE AUTO:
+  - RoutingRule.conditions match
+  - Document→destination_folder
+  - Notifications à admins
+  - Archive après workflow
+  
+  === PERMISSIONS ===
+  User.role détermine access:
+  - AGENT: read own, create
+  - SERVICE_MANAGER: r/w Service
+  - FILIALE_MANAGER: r/w Filiale
+  - ADMIN: full access
+end legend
+
+@enduml

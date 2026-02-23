@@ -1,0 +1,257 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>SGDRA - Diagramme UML Architecture Backend</title>
+    <script src="https://cdn.jsdelivr.net/npm/plantuml-encoder@1.4.0/dist/plantuml-encoder.min.js"></script>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+        
+        body {
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            min-height: 100vh;
+            padding: 20px;
+        }
+        
+        .container {
+            max-width: 1400px;
+            margin: 0 auto;
+            background: white;
+            border-radius: 12px;
+            box-shadow: 0 20px 60px rgba(0,0,0,0.3);
+            overflow: hidden;
+        }
+        
+        .header {
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            color: white;
+            padding: 30px;
+            text-align: center;
+        }
+        
+        .header h1 {
+            font-size: 2.5em;
+            margin-bottom: 10px;
+        }
+        
+        .header p {
+            font-size: 1.1em;
+            opacity: 0.9;
+        }
+        
+        .content {
+            padding: 30px;
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            gap: 30px;
+        }
+        
+        .diagram-section {
+            display: flex;
+            flex-direction: column;
+            gap: 20px;
+        }
+        
+        .diagram-section h2 {
+            color: #667eea;
+            border-bottom: 3px solid #667eea;
+            padding-bottom: 10px;
+        }
+        
+        .diagram-box {
+            background: #f8f9fa;
+            border: 2px solid #e0e0e0;
+            border-radius: 8px;
+            padding: 20px;
+            overflow-x: auto;
+        }
+        
+        .diagram-box img {
+            max-width: 100%;
+            height: auto;
+            display: block;
+        }
+        
+        .code-section {
+            background: #2d2d2d;
+            color: #f8f8f2;
+            padding: 20px;
+            border-radius: 8px;
+            overflow-x: auto;
+        }
+        
+        .code-section pre {
+            font-family: 'Monaco', 'Courier New', monospace;
+            font-size: 0.9em;
+            line-height: 1.6;
+        }
+        
+        .key-features {
+            background: #e8f5e9;
+            border-left: 4px solid #4caf50;
+            padding: 20px;
+            border-radius: 8px;
+            margin-top: 20px;
+        }
+        
+        .key-features h3 {
+            color: #2e7d32;
+            margin-bottom: 15px;
+        }
+        
+        .key-features ul {
+            list-style: none;
+        }
+        
+        .key-features li {
+            padding: 8px 0;
+            color: #1b5e20;
+        }
+        
+        .key-features li:before {
+            content: "✓ ";
+            color: #4caf50;
+            font-weight: bold;
+            margin-right: 10px;
+        }
+        
+        .stats {
+            display: grid;
+            grid-template-columns: repeat(4, 1fr);
+            gap: 15px;
+            margin-top: 20px;
+        }
+        
+        .stat-card {
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            color: white;
+            padding: 20px;
+            border-radius: 8px;
+            text-align: center;
+        }
+        
+        .stat-card .number {
+            font-size: 2.5em;
+            font-weight: bold;
+            margin-bottom: 10px;
+        }
+        
+        .stat-card .label {
+            font-size: 0.9em;
+            opacity: 0.9;
+        }
+        
+        @media (max-width: 1024px) {
+            .content {
+                grid-template-columns: 1fr;
+            }
+            
+            .stats {
+                grid-template-columns: repeat(2, 1fr);
+            }
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <div class="header">
+            <h1>🚀 SGDRA - Backend Architecture</h1>
+            <p>Système de Gestion des Dépôts et Routage des Agents</p>
+            <p style="font-size: 0.95em; margin-top: 10px; opacity: 0.8;">UML Class Diagram - État du Backend (28 janvier 2026)</p>
+        </div>
+        
+        <div class="content">
+            <div class="diagram-section">
+                <h2>📊 Diagramme UML - Vue Complète</h2>
+                <div class="diagram-box">
+                    <svg viewBox="0 0 1200 800" style="width: 100%; height: auto; border: 1px solid #ddd; border-radius: 4px;">
+                        <!-- Placeholder - le vrai diagramme sera généré par PlantUML -->
+                        <rect width="1200" height="800" fill="#f0f0f0"/>
+                        <text x="600" y="400" text-anchor="middle" font-size="20" fill="#666">
+                            Diagramme UML chargé via PlantUML
+                        </text>
+                    </svg>
+                </div>
+                <p style="color: #666; font-size: 0.9em; margin-top: 10px;">
+                    <strong>📝 Note:</strong> Ce diagramme peut être généré avec:
+                    <br>$ plantuml backend/uml.puml
+                </p>
+            </div>
+            
+            <div class="diagram-section">
+                <h2>📌 Structures Principales</h2>
+                
+                <div class="key-features">
+                    <h3>Classes Implémentées</h3>
+                    <ul>
+                        <li><strong>User</strong> - Authentification (AGENT/ADMIN)</li>
+                        <li><strong>Document</strong> - Entité centrale (NOUVEAU→VALIDE→ARCHIVE)</li>
+                        <li><strong>DocumentSpecification</strong> - Configuration par type</li>
+                        <li><strong>DocumentValidationResult</strong> - Résultats validation</li>
+                        <li><strong>Folder</strong> - Hiérarchique (parent-child)</li>
+                        <li><strong>RoutingRule</strong> - Auto-routing (JSON conditions)</li>
+                        <li><strong>Notification</strong> - Auto via signals</li>
+                        <li><strong>DepartmentDocumentType</strong> - Contraintes métier</li>
+                    </ul>
+                </div>
+                
+                <div class="key-features" style="background: #e3f2fd; border-left-color: #2196f3;">
+                    <h3 style="color: #1565c0;">Relations Principales</h3>
+                    <ul>
+                        <li>User <strong>creates</strong> Document (1:N)</li>
+                        <li>User <strong>creates</strong> Folder (1:N)</li>
+                        <li>Folder <strong>contains</strong> Document (1:N)</li>
+                        <li>Folder <strong>parent-child</strong> Folder (N:N)</li>
+                        <li>Document <strong>validates</strong> DocumentValidationResult (1:1)</li>
+                        <li>Document <strong>triggers</strong> Notification (1:N)</li>
+                        <li>RoutingRule <strong>configures</strong> Folder (N:1)</li>
+                    </ul>
+                </div>
+            </div>
+        </div>
+        
+        <div style="padding: 30px; background: #f8f9fa; border-top: 2px solid #e0e0e0;">
+            <h2 style="color: #667eea; margin-bottom: 20px;">📈 Statistiques Projet</h2>
+            
+            <div class="stats">
+                <div class="stat-card">
+                    <div class="number">6</div>
+                    <div class="label">Apps Django</div>
+                </div>
+                <div class="stat-card">
+                    <div class="number">8</div>
+                    <div class="label">Modèles</div>
+                </div>
+                <div class="stat-card">
+                    <div class="number">23</div>
+                    <div class="label">API Endpoints</div>
+                </div>
+                <div class="stat-card">
+                    <div class="number">100%</div>
+                    <div class="label">Backend Complété</div>
+                </div>
+            </div>
+            
+            <div style="margin-top: 30px; background: white; padding: 20px; border-radius: 8px; border-left: 4px solid #ff9800;">
+                <h3 style="color: #f57c00; margin-bottom: 15px;">🎯 Frontend (À démarrer Jour 6)</h3>
+                <p style="color: #666; margin-bottom: 15px;">
+                    5 pages prioritaires à créer avec les services API:
+                </p>
+                <ul style="list-style: none; display: grid; grid-template-columns: repeat(2, 1fr); gap: 10px;">
+                    <li>• DocumentUploadPage</li>
+                    <li>• MyDocumentsPage</li>
+                    <li>• AdminDashboard</li>
+                    <li>• AdminDocumentList</li>
+                    <li>• ReviewDocumentPage</li>
+                </ul>
+            </div>
+        </div>
+    </div>
+</body>
+</html>

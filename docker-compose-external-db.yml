@@ -1,0 +1,112 @@
+version: '3.9'
+
+services:
+  redis:
+    image: redis:7-alpine
+    container_name: sgdra-redis
+    command: redis-server --appendonly yes
+    volumes:
+      - redis_data:/data
+    ports:
+      - "6379:6379"
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      timeout: 10s
+      retries: 5
+    networks:
+      - sgdra-network
+
+  backend:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: sgdra-backend
+    environment:
+      DEBUG: ${DEBUG:-False}
+      SECRET_KEY: ${SECRET_KEY}
+      ALLOWED_HOSTS: ${ALLOWED_HOSTS}
+      DATABASE_URL: mysql://${MYSQL_USER}:${MYSQL_PASSWORD}@127.0.0.1:3306/${MYSQL_DATABASE}
+      REDIS_URL: redis://redis:6379/0
+      CELERY_BROKER_URL: redis://redis:6379/0
+      CELERY_RESULT_BACKEND: redis://redis:6379/0
+    
+    volumes:
+      - ./backend:/app/backend
+      - backend_logs:/app/backend/logs
+      - backend_media:/app/backend/media
+      - backend_staticfiles:/app/backend/staticfiles
+    
+    ports:
+      - "8000:8000"
+    
+    depends_on:
+      redis:
+        condition: service_healthy
+    
+    networks:
+      - sgdra-network
+    
+    command: >
+      sh -c "
+        python manage.py migrate &&
+        python manage.py collectstatic --noinput &&
+        gunicorn config.wsgi:application --bind 0.0.0.0:8000 --workers 8 --timeout 120
+      "
+
+  celery-worker:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: sgdra-celery-worker
+    environment:
+      DEBUG: ${DEBUG:-False}
+      DATABASE_URL: mysql://${MYSQL_USER}:${MYSQL_PASSWORD}@127.0.0.1:3306/${MYSQL_DATABASE}
+      REDIS_URL: redis://redis:6379/0
+      CELERY_BROKER_URL: redis://redis:6379/0
+      CELERY_RESULT_BACKEND: redis://redis:6379/0
+    
+    volumes:
+      - ./backend:/app/backend
+      - backend_logs:/app/backend/logs
+    
+    depends_on:
+      - redis
+    
+    networks:
+      - sgdra-network
+    
+    command: celery -A config worker -l info
+
+  celery-beat:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: sgdra-celery-beat
+    environment:
+      DEBUG: ${DEBUG:-False}
+      DATABASE_URL: mysql://${MYSQL_USER}:${MYSQL_PASSWORD}@127.0.0.1:3306/${MYSQL_DATABASE}
+      REDIS_URL: redis://redis:6379/0
+      CELERY_BROKER_URL: redis://redis:6379/0
+      CELERY_RESULT_BACKEND: redis://redis:6379/0
+    
+    volumes:
+      - ./backend:/app/backend
+      - backend_logs:/app/backend/logs
+    
+    depends_on:
+      - redis
+    
+    networks:
+      - sgdra-network
+    
+    command: celery -A config beat -l info
+
+networks:
+  sgdra-network:
+    driver: bridge
+
+volumes:
+  redis_data:
+  backend_logs:
+  backend_media:
+  backend_staticfiles:

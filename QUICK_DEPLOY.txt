@@ -1,0 +1,250 @@
+╔════════════════════════════════════════════════════════════════════════════╗
+║       SGDRA - Déploiement Depuis votre Machine Locale vers le Serveur      ║
+║                     10.0.5.18 (erpgmc:toor → root)                         ║
+╚════════════════════════════════════════════════════════════════════════════╝
+
+🚀 DÉPLOIEMENT RAPIDE (3 ÉTAPES):
+
+1️⃣  SETUP SSH (UNE FOIS):
+    
+    # Sur votre machine locale:
+    ssh-keygen -t rsa -b 4096 -f ~/.ssh/id_rsa -N ""
+    ssh-copy-id -i ~/.ssh/id_rsa.pub erpgmc@10.0.5.18
+    
+    # Tester:
+    ssh erpgmc@10.0.5.18 "echo OK"
+
+2️⃣  CONFIGUREZ LE SERVEUR (UNE FOIS):
+    
+    ssh erpgmc@10.0.5.18
+    cd /srv/sgdra
+    cp .env.production .env.production.local
+    nano .env.production.local          # Adapter les variables
+    ./pre-check.sh                      # Vérifier que tout est OK
+
+3️⃣  DÉPLOYEZ DEPUIS VOTRE MACHINE:
+    
+    cd /chemin/vers/votre/sgdra/
+    ./deploy-to-server.sh deploy
+    
+    # Voilà! Le code est sur le serveur et Docker démarre
+
+═══════════════════════════════════════════════════════════════════════════════
+
+📋 COMMANDES DISPONIBLES:
+
+./deploy-to-server.sh deploy        # Déployer le code et (re)démarrer
+./deploy-to-server.sh logs          # Voir les logs en temps réel
+./deploy-to-server.sh logs backend  # Logs du backend uniquement
+./deploy-to-server.sh status        # État des services
+./deploy-to-server.sh restart       # Redémarrer tous les services
+./deploy-to-server.sh stop          # Arrêter les services
+./deploy-to-server.sh start         # Démarrer les services
+
+═══════════════════════════════════════════════════════════════════════════════
+
+👁️  COMMENT ÇA MARCHE:
+
+Depuis votre ordinateur (LOCAL):
+                    │
+                    └─ deploy-to-server.sh
+                       ├─ Vérifie SSH (sans mot de passe)
+                       ├─ Crée sauvegarde sur serveur
+                       ├─ Synchronise votre code (rsync)
+                       ├─ Setup config
+                       └─ Lance Docker sur le serveur
+
+Résultat: Services démarrés sur 10.0.5.18 🎉
+
+═══════════════════════════════════════════════════════════════════════════════
+
+🔧 CONFIGURATION SSH (Important!)
+
+Vous DEVEZ avoir accès SSH sans mot de passe, sinon le script échouera.
+
+OPTION 1: SSH Key (RECOMMANDÉ):
+  
+  # Sur votre machine:
+  ssh-keygen -t rsa -b 4096 -f ~/.ssh/id_rsa -N ""
+  ssh-copy-id -i ~/.ssh/id_rsa.pub erpgmc@10.0.5.18
+  
+  # Vérifier:
+  ssh erpgmc@10.0.5.18 "echo OK"
+  # ✓ Ne doit pas demander de mot de passe
+
+OPTION 2: SSH Config (pour plusieurs clés):
+  
+  # Créer/éditer ~/.ssh/config:
+  Host sgdra-server
+      HostName 10.0.5.18
+      User erpgmc
+      IdentityFile ~/.ssh/id_rsa
+      IdentitiesOnly yes
+
+  # Puis utiliser:
+  ssh sgdra-server
+  # ✓ Doit se connecter sans mot de passe
+
+═══════════════════════════════════════════════════════════════════════════════
+
+📊 ARCHITECTURE GLOBALE:
+
+┌─── VOTRE MACHINE (Local) ────────────────────────┐
+│                                                   │
+│  ├─ Fichiers du projet (sources)                 │
+│  ├─ deploy-to-server.sh (script local)           │
+│  └─ Pre-configured via SSH (connexion)           │
+│                                                   │
+└─────────────┬─────────────────────────────────────┘
+              │ 
+              │ rsync (synchronisation)
+              │ 
+┌─────────────▼─────────────────────────────────────┐
+│ SERVEUR (10.0.5.18) - /srv/sgdra/               │
+│                                                   │
+│  ├─ Code Django (synced)                         │
+│  ├─ deploy.sh (gestion locale)                   │
+│  ├─ docker-compose.prod.yml                      │
+│  └─ .env.production.local (configuration)        │
+│                                                   │
+│  Services Docker:                                 │
+│  ├─ MySQL (base de datos)                        │
+│  ├─ Redis (cache)                                │
+│  ├─ Django Backend (Gunicorn)                    │
+│  ├─ Celery Worker / Beat                         │
+│  └─ Nginx (reverse proxy SSL)                    │
+│                                                   │
+└─────────────────────────────────────────────────┘
+              │
+              └─ Accessible via https://10.0.5.18
+
+═══════════════════════════════════════════════════════════════════════════════
+
+⚙️  CONFIGURATION À ADAPTER (Sur le serveur):
+
+Dans .env.production.local:
+
+[SÉCURITÉ]
+  SECRET_KEY=<clé-aléatoire>        # Générer avec: python -c "from django.core.management.utils import get_random_secret_key; print(get_random_secret_key())"
+  DEBUG=False                        # Jamais True en production
+
+[BASE DE DONNÉES]
+  MYSQL_ROOT_PASSWORD=<mot_de_passe_root>
+  MYSQL_PASSWORD=<mot_de_passe_user>
+
+[DOMAINE]
+  ALLOWED_HOSTS=10.0.5.18,yourdomain.com
+  CORS_ALLOWED_ORIGINS=https://10.0.5.18,https://yourdomain.com
+
+[EMAIL]
+  EMAIL_HOST_USER=your-email@gmail.com
+  EMAIL_HOST_PASSWORD=<app_password>
+
+═══════════════════════════════════════════════════════════════════════════════
+
+📚 DOCUMENTATION COMPLÈTE:
+
+  ├─ DEPLOY_FROM_LOCAL.md          # Ce guide (détaillé)
+  ├─ DEPLOYMENT.md                 # Setup du serveur
+  ├─ OPERATIONS.md                 # Opérations quotidiennes
+  └─ DEPLOYMENT_SUMMARY.txt        # Vue d'ensemble
+
+═══════════════════════════════════════════════════════════════════════════════
+
+🆘 TROUBLESHOOTING RAPIDE:
+
+PROBLÈME: "Permission denied (publickey)"
+SOLUTION: 
+  ssh-copy-id -i ~/.ssh/id_rsa.pub erpgmc@10.0.5.18
+  # Entrer le mot de passe: toor
+
+PROBLÈME: "rsync command not found on server"
+SOLUTION:
+  ssh erpgmc@10.0.5.18
+  sudo apt-get install rsync
+
+PROBLÈME: "Services ne démarrent pas"
+SOLUTION:
+  ./deploy-to-server.sh logs backend   # Voir les erreurs
+  ./deploy-to-server.sh restart        # Redémarrer
+
+PROBLÈME: ".env.production.local not found"
+SOLUTION:
+  # Le script crée automatiquement depuis .env.production
+  # Vous devez l'éditer sur le serveur:
+  ssh erpgmc@10.0.5.18
+  nano /srv/sgdra/.env.production.local
+
+═══════════════════════════════════════════════════════════════════════════════
+
+💡 BONNES PRATIQUES:
+
+1. ✓ Toujours configurer SSH key sans mot de passe
+2. ✓ Sauvegardes automatiques avant chaque déploiement
+3. ✓ Vérifier .env.production.local sur le serveur
+4. ✓ Tester avec ./pre-check.sh avant le déploiement
+5. ✓ Consulter les logs après déploiement
+6. ✓ Configurer Let's Encrypt pour SSL en production
+
+═══════════════════════════════════════════════════════════════════════════════
+
+🐳 DOCKER SUR LE SERVEUR:
+
+Après le déploiement, vous pouvez gérer Docker directement sur le serveur:
+
+# Voir les conteneurs en cours:
+ssh erpgmc@10.0.5.18 "docker ps"
+
+# Voir les logs:
+ssh erpgmc@10.0.5.18 "docker logs -f sgdra-backend"
+
+# Exécuter une commande Django:
+ssh erpgmc@10.0.5.18 "docker-compose -f /srv/sgdra/docker-compose.prod.yml exec backend python manage.py createsuperuser"
+
+# Voir la consommation:
+ssh erpgmc@10.0.5.18 "docker stats"
+
+═══════════════════════════════════════════════════════════════════════════════
+
+✨ FONCTION PRINCIPALE DU SCRIPT:
+
+./deploy-to-server.sh deploy FAIT AUTOMATIQUEMENT:
+
+1. ✓ Vérifiie la connexion SSH
+2. ✓ Teste l'accès au serveur
+3. ✓ Crée une sauvegarde (backup)
+4. ✓ Synchronise tout le code (rsync)
+5. ✓ Setup les fichiers manquants
+6. ✓ Lance les vérifications (pre-check.sh)
+7. ✓ Demande confirmation
+8. ✓ Démarre les services Docker
+9. ✓ Vérifie la santé des services
+10. ✓ Affiche l'URL d'accès
+
+Tout cela en une seule commande! 🎯
+
+═══════════════════════════════════════════════════════════════════════════════
+
+📞 RÉSUMÉ:
+
+INSTALLATION:
+  ssh-keygen && ssh-copy-id && ./pre-check.sh ✓
+
+DÉPLOIEMENT:
+  ./deploy-to-server.sh deploy ✓
+
+MONITORING:
+  ./deploy-to-server.sh logs ✓
+
+SIMPLE ET EFFICACE!
+
+═══════════════════════════════════════════════════════════════════════════════
+
+**PRÊT À DÉPLOYER!** 🚀
+
+Accès: https://10.0.5.18
+Admin: https://10.0.5.18/admin/
+API: https://10.0.5.18/api/
+
+═══════════════════════════════════════════════════════════════════════════════
+Date: 2026-02-12 | Version: 1.0.0

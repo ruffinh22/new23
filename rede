@@ -1,0 +1,2 @@
+ pkill -f "gunicorn config.wsgi" ; sleep 2 && cd /home/lidruf/sgdra-project && ./start_backend.sh > /tmp/backend.log 2>&1 &
+source venv/bin/activate && pkill -f daphne 2>/dev/null; sleep 2; daphne -b 0.0.0.0 -p 8000 config.asgi:application > /tmp/backend.log 2>&1 &

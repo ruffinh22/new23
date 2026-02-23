@@ -1,0 +1,197 @@
+version: '3.9'
+
+services:
+  # MySQL Database
+  mysql:
+    image: mysql:8.0
+    container_name: sgdra-mysql
+    environment:
+      MYSQL_ROOT_PASSWORD: ${MYSQL_ROOT_PASSWORD:-root}
+      MYSQL_DATABASE: ${MYSQL_DATABASE:-sgdra_db}
+      MYSQL_USER: ${MYSQL_USER:-sgdra}
+      MYSQL_PASSWORD: ${MYSQL_PASSWORD:-sgdra_password}
+    volumes:
+      - mysql_data:/var/lib/mysql
+      - ./backend/scripts/setup_mysql_timezones.sh:/docker-entrypoint-initdb.d/timezone.sh
+    ports:
+      - "${MYSQL_PORT:-3306}:3306"
+    healthcheck:
+      test: ["CMD", "mysqladmin", "ping", "-h", "localhost"]
+      timeout: 20s
+      retries: 10
+      interval: 10s
+    networks:
+      - sgdra-network
+
+  # Redis Cache & Broker
+  redis:
+    image: redis:7-alpine
+    container_name: sgdra-redis
+    command: redis-server --appendonly yes
+    volumes:
+      - redis_data:/data
+    ports:
+      - "${REDIS_PORT:-6379}:6379"
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      timeout: 10s
+      retries: 5
+      interval: 5s
+    networks:
+      - sgdra-network
+
+  # Django Backend + Frontend Static
+  backend:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: sgdra-backend
+    environment:
+      # Django
+      DEBUG: ${DEBUG:-False}
+      ENVIRONMENT: ${ENVIRONMENT:-production}
+      SECRET_KEY: ${SECRET_KEY:-your-secret-key-change-this}
+      ALLOWED_HOSTS: ${ALLOWED_HOSTS:-localhost,127.0.0.1}
+      
+      # Database
+      DATABASE_URL: mysql://${MYSQL_USER:-sgdra}:${MYSQL_PASSWORD:-sgdra_password}@mysql:3306/${MYSQL_DATABASE:-sgdra_db}
+      
+      # Redis
+      REDIS_HOST: redis
+      REDIS_PORT: 6379
+      REDIS_URL: redis://redis:6379/0
+      CELERY_BROKER_URL: redis://redis:6379/0
+      CELERY_RESULT_BACKEND: redis://redis:6379/0
+      
+      # Security
+      SECURE_SSL_REDIRECT: ${SECURE_SSL_REDIRECT:-False}
+      SECURE_HSTS_SECONDS: ${SECURE_HSTS_SECONDS:-31536000}
+      CSRF_COOKIE_SECURE: ${CSRF_COOKIE_SECURE:-False}
+      SESSION_COOKIE_SECURE: ${SESSION_COOKIE_SECURE:-False}
+      
+      # CORS
+      CORS_ALLOWED_ORIGINS: ${CORS_ALLOWED_ORIGINS:-http://localhost:8000,http://localhost:5173}
+      
+      # Sentry (optionnel)
+      SENTRY_DSN: ${SENTRY_DSN:-}
+      SENTRY_ENABLED: ${SENTRY_ENABLED:-False}
+      
+      # App
+      APP_VERSION: ${APP_VERSION:-1.0.0}
+      
+      # Celery Beat
+      CELERY_BEAT_SCHEDULE_ENABLED: ${CELERY_BEAT_SCHEDULE_ENABLED:-True}
+    
+    volumes:
+      - ./backend:/app/backend
+      - backend_logs:/app/backend/logs
+      - backend_media:/app/backend/media
+      - backend_staticfiles:/app/backend/staticfiles
+    
+    ports:
+      - "${BACKEND_PORT:-8000}:8000"
+    
+    depends_on:
+      mysql:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8000/health/"]
+      timeout: 10s
+      retries: 5
+      interval: 10s
+    
+    networks:
+      - sgdra-network
+    
+    command: >
+      sh -c "
+        echo 'Running migrations...' &&
+        python manage.py migrate &&
+        echo 'Collecting static files...' &&
+        python manage.py collectstatic --noinput &&
+        echo 'Starting server with Daphne (WebSocket support)...' &&
+        daphne -b 0.0.0.0 -p 8000 config.asgi:application
+      "
+
+  # Celery Worker
+  celery-worker:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: sgdra-celery-worker
+    environment:
+      # Django
+      DEBUG: ${DEBUG:-False}
+      ENVIRONMENT: ${ENVIRONMENT:-production}
+      SECRET_KEY: ${SECRET_KEY:-your-secret-key-change-this}
+      
+      # Database
+      DATABASE_URL: mysql://${MYSQL_USER:-sgdra}:${MYSQL_PASSWORD:-sgdra_password}@mysql:3306/${MYSQL_DATABASE:-sgdra_db}
+      
+      # Redis
+      REDIS_URL: redis://redis:6379/0
+      CELERY_BROKER_URL: redis://redis:6379/0
+      CELERY_RESULT_BACKEND: redis://redis:6379/0
+    
+    volumes:
+      - ./backend:/app/backend
+      - backend_logs:/app/backend/logs
+      - backend_media:/app/backend/media
+    
+    depends_on:
+      - mysql
+      - redis
+      - backend
+    
+    networks:
+      - sgdra-network
+    
+    command: celery -A config worker -l info
+
+  # Celery Beat Scheduler
+  celery-beat:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: sgdra-celery-beat
+    environment:
+      # Django
+      DEBUG: ${DEBUG:-False}
+      ENVIRONMENT: ${ENVIRONMENT:-production}
+      SECRET_KEY: ${SECRET_KEY:-your-secret-key-change-this}
+      
+      # Database
+      DATABASE_URL: mysql://${MYSQL_USER:-sgdra}:${MYSQL_PASSWORD:-sgdra_password}@mysql:3306/${MYSQL_DATABASE:-sgdra_db}
+      
+      # Redis
+      REDIS_URL: redis://redis:6379/0
+      CELERY_BROKER_URL: redis://redis:6379/0
+      CELERY_RESULT_BACKEND: redis://redis:6379/0
+    
+    volumes:
+      - ./backend:/app/backend
+      - backend_logs:/app/backend/logs
+    
+    depends_on:
+      - mysql
+      - redis
+      - backend
+    
+    networks:
+      - sgdra-network
+    
+    command: celery -A config beat -l info --scheduler django_celery_beat.schedulers:DatabaseScheduler
+
+volumes:
+  mysql_data:
+  redis_data:
+  backend_logs:
+  backend_media:
+  backend_staticfiles:
+
+networks:
+  sgdra-network:
+    driver: bridge
