@@ -1,76 +1,110 @@
 /**
  * Hook personalisé useNotifications
  * 
- * Encapsule toute la logique des notifications
- * Simplifie l'utilisation dans les composants
- * 
- * Utilisation:
- *   const { notifications, unreadCount, markAsRead } = useNotifications()
+ * Gère la connexion WebSocket en temps réel et les notifications
+ * - Attend l'authentification avant de se connecter
+ * - Gère automatiquement les reconnexions
+ * - Écoute les mises à jour en temps réel du serveur
  */
 
-import { useEffect } from 'react'
+import { useEffect, useRef, useCallback } from 'react'
 import { useNotificationStore } from '@/stores/notificationStore'
+import { useAuth } from '@/contexts/AuthContext'
 import { wsService } from '@/services/websocketService'
 import { STORAGE_KEYS } from '@/utils/constants'
 
 export function useNotifications() {
   const store = useNotificationStore()
+  const { isAuthenticated } = useAuth()
+  const storeRef = useRef(store)
+  const hasInitializedRef = useRef(false)
 
-  // Initialisation au mount
+  // Garder les refs à jour
   useEffect(() => {
-    const token = localStorage.getItem(STORAGE_KEYS.accessToken)
-    if (!token) {
-      console.warn('[useNotifications] No access token available')
+    storeRef.current = store
+  }, [store])
+
+  // Créer les handlers (stable pour éviter les re-registrations)
+  const createHandlers = useCallback(() => {
+    return {
+      handleNotification: (data: any) => {
+        console.log('[useNotifications] 📨 Notification reçue:', data.notification?.id)
+        if (data.notification) {
+          storeRef.current.addNotification(data.notification)
+          storeRef.current.loadUnreadCount()
+        }
+      },
+      handleNotificationUpdated: (data: any) => {
+        console.log('[useNotifications] ✏️ Notification mise à jour:', data.notification?.id)
+        if (data.notification) {
+          storeRef.current.updateNotification(data.notification.id, data.notification)
+          storeRef.current.loadUnreadCount()
+        }
+      },
+      handleInitialNotifications: (data: any) => {
+        console.log('[useNotifications] 📦 Notifications initiales reçues:', data.count)
+      }
+    }
+  }, [])
+
+  // EFFET PRINCIPAL: Gérer la connexion WebSocket
+  useEffect(() => {
+    // Ne rien faire si pas authentifié
+    if (!isAuthenticated) {
+      console.log('[useNotifications] ⏳ En attente d\'authentification...')
+      hasInitializedRef.current = false
       return
     }
 
-    // Charger les données initiales
-    store.refreshAll()
+    // Récupérer le token depuis localStorage
+    const authToken = localStorage.getItem(STORAGE_KEYS.accessToken)
+    
+    if (!authToken) {
+      console.log('[useNotifications] ❌ Aucun token trouvé en localStorage')
+      hasInitializedRef.current = false
+      return
+    }
 
-    // Connecter WebSocket
+    // Éviter les initialisations multiples
+    if (hasInitializedRef.current) {
+      console.log('[useNotifications] ✅ Déjà initialisé, on saute')
+      return
+    }
+
+    hasInitializedRef.current = true
+    console.log('[useNotifications] 🚀 Initialisation avec token...')
+
+    // Créer les handlers
+    const handlers = createHandlers()
+
+    // Enregistrer les handlers AVANT connexion
+    wsService.on('notification', handlers.handleNotification)
+    wsService.on('notification_updated', handlers.handleNotificationUpdated)
+    wsService.on('initial_notifications', handlers.handleInitialNotifications)
+
+    // Charger les notifications initiales via HTTP
+    storeRef.current.refreshAll()
+
+    // Se connecter au WebSocket
     wsService
-      .connect(token)
+      .connect(authToken)
       .then(() => {
-        console.log('[useNotifications] WebSocket connected')
+        console.log('[useNotifications] ✅ WebSocket connecté avec succès')
       })
       .catch((error) => {
-        console.error('[useNotifications] WebSocket connection error:', error)
+        console.error('[useNotifications] ❌ Erreur connexion WebSocket:', error)
       })
 
-    // WebSocket listeners
-    const handleNotificationNew = (data: any) => {
-      console.log('[useNotifications] New notification received:', data)
-      if (data.notification) {
-        store.addNotification(data.notification)
-        store.loadUnreadCount()
-      }
-    }
-
-    const handleNotificationUpdated = (data: any) => {
-      console.log('[useNotifications] Notification updated:', data)
-      if (data.notification) {
-        store.updateNotification(data.notification.id, data.notification)
-        store.loadUnreadCount()
-      }
-    }
-
-    const handleBadgeUpdate = (data: any) => {
-      console.log('[useNotifications] Badge update:', data)
-      store.loadUnreadCount()
-    }
-
-    wsService.on('notification_new', handleNotificationNew)
-    wsService.on('notification_updated', handleNotificationUpdated)
-    wsService.on('badge_update', handleBadgeUpdate)
-
-    // Cleanup
+    // CLEANUP: Fermer la connexion et désenregistrer les handlers
     return () => {
-      wsService.off('notification_new', handleNotificationNew)
-      wsService.off('notification_updated', handleNotificationUpdated)
-      wsService.off('badge_update', handleBadgeUpdate)
+      console.log('[useNotifications] 🧹 Cleanup: désenregistrement des handlers')
+      wsService.off('notification', handlers.handleNotification)
+      wsService.off('notification_updated', handlers.handleNotificationUpdated)
+      wsService.off('initial_notifications', handlers.handleInitialNotifications)
       wsService.disconnect()
+      hasInitializedRef.current = false
     }
-  }, [store])
+  }, [isAuthenticated, createHandlers])
 
   return {
     // State
@@ -115,3 +149,4 @@ export function useNotifications() {
     loadPreferences: store.loadPreferences
   }
 }
+

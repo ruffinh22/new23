@@ -1,6 +1,7 @@
 import React, { useState, useEffect } from 'react'
 import { useAuth } from '@/contexts/AuthContext'
 import { Layout } from '@/components/common'
+import { isAdmin } from '@/utils/authUtils'
 import {
   FileText, Settings, Upload,
   BookOpen, ChevronRight, Menu, X,
@@ -72,7 +73,8 @@ export const TemplatesGuide: React.FC = () => {
   const { user } = useAuth()
   
   useEffect(() => {
-    if (user?.is_staff || user?.role === 'ADMIN') {
+    // ✅ UTILISE authUtils.isAdmin() - single source of truth
+    if (isAdmin(user)) {
       setUserRole('admin')
     } else {
       setUserRole('agent')

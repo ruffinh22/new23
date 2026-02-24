@@ -2,6 +2,7 @@ from rest_framework import viewsets, status, permissions
 from rest_framework.decorators import action
 from rest_framework.response import Response
 
+from apps.common.mixins import PermissionMixin
 from .models import RoutingRule, DepartmentDocumentType
 from .serializers import (
     RoutingRuleSerializer,
@@ -21,8 +22,11 @@ class IsAdminOrReadOnly(permissions.BasePermission):
         return request.user and (request.user.is_staff or getattr(request.user, 'role', None) == 'ADMIN')
 
 
-class DepartmentDocumentTypeViewSet(viewsets.ModelViewSet):
-    """ViewSet pour gérer les types de documents par département."""
+class DepartmentDocumentTypeViewSet(PermissionMixin, viewsets.ModelViewSet):
+    """ViewSet pour gérer les types de documents par département.
+    
+    ✅ UTILISE PermissionMixin pour centralized admin checks.
+    """
     
     queryset = DepartmentDocumentType.objects.all()
     serializer_class = DepartmentDocumentTypeSerializer
@@ -104,8 +108,11 @@ class DepartmentDocumentTypeViewSet(viewsets.ModelViewSet):
         })
 
 
-class RoutingRuleViewSet(viewsets.ModelViewSet):
-    """ViewSet pour gérer les règles de routage."""
+class RoutingRuleViewSet(PermissionMixin, viewsets.ModelViewSet):
+    """ViewSet pour gérer les règles de routage.
+    
+    ✅ UTILISE PermissionMixin pour centralized admin checks.
+    """
     
     queryset = RoutingRule.objects.all()
     permission_classes = [permissions.IsAuthenticated, IsAdminOrReadOnly]
@@ -119,12 +126,15 @@ class RoutingRuleViewSet(viewsets.ModelViewSet):
         return RoutingRuleSerializer
     
     def get_queryset(self):
-        """Retourne les règles triées par priorité, filtrées par branche."""
+        """Retourne les règles triées par priorité, filtrées par branche.
+        
+        ✅ UTILISE self.is_admin() pour centralized check.
+        """
         user = self.request.user
         queryset = RoutingRule.objects.all().order_by('-priority', '-created_at')
         
-        # Les admins (role=ADMIN ou is_staff=True) voient TOUTES les règles
-        if getattr(user, 'role', None) == 'ADMIN' or user.is_staff:
+        # ✅ UTILISE PermissionMixin.is_admin() - single source of truth
+        if self.is_admin(user):
             return queryset
         
         # Les agents avec une branche voient seulement les règles de leur branche + globales

@@ -1,38 +1,9 @@
 from django.contrib import admin
 from django.contrib.auth.admin import UserAdmin as BaseUserAdmin
-from .models import User, Department
+from .models import User
 
 
-@admin.register(Department)
-class DepartmentAdmin(admin.ModelAdmin):
-    """Admin pour le modèle Department."""
-    
-    list_display = ('name', 'code', 'folder', 'is_active', 'created_at')
-    list_filter = ('is_active', 'created_at')
-    search_fields = ('name', 'code', 'description')
-    readonly_fields = ('folder', 'created_at', 'updated_at')
-    
-    fieldsets = (
-        (None, {'fields': ('name', 'code')}),
-        ('Informations', {
-            'fields': ('description', 'folder')
-        }),
-        ('Status', {
-            'fields': ('is_active',)
-        }),
-        ('Dates', {
-            'fields': ('created_at', 'updated_at'),
-            'classes': ('collapse',)
-        }),
-    )
-    
-    ordering = ('name',)
-    
-    def save_model(self, request, obj, form, change):
-        """Enregistrer le modèle."""
-        super().save_model(request, obj, form, change)
-        if not change:  # Si création
-            print(f"✓ Département créé: {obj.name}")
+# ✅ LEGACY: Department and Branch admin removed - use FolderAdmin in folders app instead
 
 
 @admin.register(User)
@@ -48,8 +19,9 @@ class UserAdmin(BaseUserAdmin):
         ('Informations personnelles', {
             'fields': ('first_name', 'last_name', 'email', 'phone', 'avatar')
         }),
-        ('Informations professionnelles', {
-            'fields': ('department', 'role')
+        ('Hiérarchie organisationnelle', {
+            'fields': ('pole', 'branch', 'department', 'role'),
+            'description': 'Pole/Branch/Department pointent maintenant vers des Folders unifiés'
         }),
         ('Permissions', {
             'fields': ('is_active', 'is_staff', 'is_superuser', 'groups', 'user_permissions')
@@ -69,9 +41,9 @@ class UserAdmin(BaseUserAdmin):
             'classes': ('wide',),
             'fields': ('first_name', 'last_name', 'phone'),
         }),
-        ('Informations professionnelles', {
+        ('Hiérarchie organisationnelle', {
             'classes': ('wide',),
-            'fields': ('department', 'role'),
+            'fields': ('pole', 'branch', 'department', 'role'),
         }),
         ('Permissions', {
             'classes': ('wide',),

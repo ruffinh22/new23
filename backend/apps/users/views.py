@@ -6,88 +6,102 @@ from rest_framework_simplejwt.views import TokenObtainPairView, TokenRefreshView
 
 from django.contrib.auth import get_user_model
 
-from .models import Department, Branch
+from apps.folders.models import Folder
+from apps.common.mixins import PermissionMixin
 from .serializers import (
     BranchSerializer,
     DepartmentSerializer,
-    DepartmentDetailSerializer,
     UserSerializer,
     UserDetailSerializer,
     UserCreateSerializer,
     UserUpdateSerializer,
     CustomTokenObtainPairSerializer,
 )
+from apps.folders.serializers import FolderDetailSerializer
 
 User = get_user_model()
 
 
-class BranchViewSet(viewsets.ModelViewSet):
-    """ViewSet pour gérer les filiales."""
+class BranchViewSet(PermissionMixin, viewsets.ModelViewSet):
+    """✅ ViewSet pour les Filiales (type='filiale') - Unified Folder-based endpoint.
     
-    queryset = Branch.objects.all()
+    ✅ UTILISE PermissionMixin pour centralized admin checks.
+    """
+    
     serializer_class = BranchSerializer
+    
+    def get_queryset(self):
+        return Folder.objects.filter(folder_type='filiale', is_active=True)
     
     def get_permissions(self):
         """Retourne les permissions selon l'action."""
-        if self.action in ['list', 'retrieve', 'choices']:
-            # Les listes publiques sont accessibles sans authentification (pour l'inscription)
-            return [permissions.AllowAny()]
-        # Les autres actions requièrent l'authentification et l'admin
-        return [permissions.IsAdminUser()]
+        return self.get_action_permissions(self.action) if hasattr(self, 'get_action_permissions') else [
+            permissions.AllowAny() if self.action in ['list', 'retrieve', 'choices'] 
+            else permissions.IsAdminUser()
+        ]
     
     @action(detail=False, methods=['get'])
     def choices(self, request):
         """Retourne les choix de filiale."""
-        choices = Branch.objects.filter(is_active=True).values('id', 'name')
+        choices = Folder.objects.filter(folder_type='filiale', is_active=True).values('id', 'name')
         return Response(list(choices))
     
     @action(detail=True, methods=['get'])
     def departments(self, request, pk=None):
-        """Retourne les départements de la filiale."""
-        branch = self.get_object()
-        departments = branch.departments.filter(is_active=True).values(
+        """Retourne les services (département) sous cette filiale."""
+        filiale = self.get_object()
+        services = filiale.children.filter(folder_type='service', is_active=True).values(
             'id', 'name', 'code', 'description'
         )
-        return Response(list(departments))
+        return Response(list(services))
 
 
-class DepartmentViewSet(viewsets.ModelViewSet):
-    """ViewSet pour gérer les départements."""
+class DepartmentViewSet(PermissionMixin, viewsets.ModelViewSet):
+    """✅ ViewSet pour les Services/Départements (type='service') - Unified Folder-based endpoint.
     
-    queryset = Department.objects.all()
+    ✅ UTILISE PermissionMixin pour centralized admin checks.
+    """
+    
+    serializer_class = DepartmentSerializer
+    
+    def get_queryset(self):
+        return Folder.objects.filter(folder_type='service', is_active=True)
     
     def get_serializer_class(self):
         """Retourne le sérialiseur approprié selon l'action."""
         if self.action == 'retrieve':
-            return DepartmentDetailSerializer
+            return FolderDetailSerializer
         return DepartmentSerializer
     
     def get_permissions(self):
         """Retourne les permissions selon l'action."""
-        if self.action in ['list', 'retrieve', 'choices']:
-            # Les listes publiques sont accessibles sans authentification (pour l'inscription)
-            return [permissions.AllowAny()]
-        # Les autres actions requièrent l'authentification et l'admin
-        return [permissions.IsAdminUser()]
+        return self.get_action_permissions(self.action) if hasattr(self, 'get_action_permissions') else [
+            permissions.AllowAny() if self.action in ['list', 'retrieve', 'choices']
+            else permissions.IsAdminUser()
+        ]
     
     @action(detail=False, methods=['get'])
     def choices(self, request):
         """Retourne les choix de département."""
-        choices = Department.objects.filter(is_active=True).values('id', 'name')
+        choices = Folder.objects.filter(folder_type='service', is_active=True).values('id', 'name')
         return Response(list(choices))
     
     @action(detail=True, methods=['get'])
     def users(self, request, pk=None):
-        """Retourne les utilisateurs du département."""
-        department = self.get_object()
-        users = department.users.values(
+        """Retourne les utilisateurs du département/service."""
+        service = self.get_object()
+        # Utiliser le related_name depuis User model: department_users
+        users = service.department_users.filter(is_active=True).values(
             'id', 'matricule', 'email', 'first_name', 'last_name', 'role', 'is_active'
         )
         return Response(list(users))
 
 
-class UserViewSet(viewsets.ModelViewSet):
-    """ViewSet pour gérer les utilisateurs."""
+class UserViewSet(PermissionMixin, viewsets.ModelViewSet):
+    """ViewSet pour gérer les utilisateurs.
+    
+    ✅ UTILISE PermissionMixin pour centralized admin checks.
+    """
     
     queryset = User.objects.all()
     parser_classes = (JSONParser, MultiPartParser, FormParser)
@@ -113,26 +127,32 @@ class UserViewSet(viewsets.ModelViewSet):
         return [permissions.IsAdminUser()]
     
     def get_queryset(self):
-        """Retourne les utilisateurs selon les permissions."""
+        """Retourne les utilisateurs selon les permissions.
+        
+        ✅ UTILISE self.is_admin() pour centralized checking.
+        """
         user = self.request.user
         
         # Les utilisateurs peuvent voir leur propre profil
         if self.action == 'retrieve':
             return User.objects.all()
         
-        # Les admins voient tous les utilisateurs
-        if user.is_staff or user.is_superuser:
+        # ✅ UTILISE PermissionMixin.is_admin() - single source of truth
+        if self.is_admin(user):
             return User.objects.all()
         
         # Les autres utilisateurs ne peuvent voir que leur propre profil
         return User.objects.filter(id=user.id)
     
     def update(self, request, *args, **kwargs):
-        """Override update to enforce admin permissions for role changes."""
+        """Override update to enforce admin permissions for role changes.
+        
+        ✅ UTILISE PermissionMixin.is_admin() pour centralized check.
+        """
         # Check if trying to update role field
         if 'role' in request.data or 'is_staff' in request.data:
-            # Only admins can change role
-            if not (request.user.is_staff or request.user.is_superuser):
+            # ✅ UTILISE PermissionMixin.is_admin() - single source of truth
+            if not self.is_admin(request.user):
                 return Response(
                     {'error': 'Seuls les administrateurs peuvent modifier le rôle d\'un utilisateur'},
                     status=status.HTTP_403_FORBIDDEN
@@ -141,11 +161,14 @@ class UserViewSet(viewsets.ModelViewSet):
         return super().update(request, *args, **kwargs)
     
     def partial_update(self, request, *args, **kwargs):
-        """Override partial_update to enforce admin permissions for role changes."""
+        """Override partial_update to enforce admin permissions for role changes.
+        
+        ✅ UTILISE PermissionMixin.is_admin() pour centralized check.
+        """
         # Check if trying to update role field
         if 'role' in request.data or 'is_staff' in request.data:
-            # Only admins can change role
-            if not (request.user.is_staff or request.user.is_superuser):
+            # ✅ UTILISE PermissionMixin.is_admin() - single source of truth
+            if not self.is_admin(request.user):
                 return Response(
                     {'error': 'Seuls les administrateurs peuvent modifier le rôle d\'un utilisateur'},
                     status=status.HTTP_403_FORBIDDEN

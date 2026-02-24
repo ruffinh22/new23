@@ -7,6 +7,7 @@ import React, { useState, useEffect } from 'react'
 import { ChevronRight, ChevronDown, FolderOpen, Folder as FolderIcon } from 'lucide-react'
 import { apiClient } from '@/services/api'
 import { useAuth } from '@/contexts/AuthContext'
+import { isAdmin } from '../../utils/authUtils'
 
 interface FolderNode {
   id: number
@@ -94,11 +95,13 @@ export const FolderTree: React.FC<FolderTreeProps> = ({
   const [folders, setFolders] = useState<FolderNode[]>([])
   const [isLoading, setIsLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
-  const isAdmin = user?.is_staff || user?.role === 'ADMIN'
+  
+  // ✅ UTILISE authUtils.isAdmin() - single source of truth
+  const isAdminUser = isAdmin(user)
 
   useEffect(() => {
     fetchFolderTree()
-  }, [refreshTrigger, isAdmin, user?.department]) // Rafraîchir quand refreshTrigger change ou le département change
+  }, [refreshTrigger, isAdminUser, user?.department])
 
   const fetchFolderTree = async () => {
     try {
@@ -106,9 +109,12 @@ export const FolderTree: React.FC<FolderTreeProps> = ({
       setError(null)
       // Pour les admins: afficher tous les dossiers
       // Pour les agents: afficher seulement les dossiers du département
-      const endpoint = isAdmin 
-        ? '/folders/folders/tree/' 
-        : `/folders/folders/tree/?department=${user?.department}`
+      let endpoint = '/folders/folders/tree/'
+      
+      if (!isAdminUser && user?.department) {
+        endpoint = `/folders/folders/tree/?department=${user.department}`
+      }
+      
       const response = await apiClient.get(endpoint)
       setFolders(response.data || [])
     } catch (err) {

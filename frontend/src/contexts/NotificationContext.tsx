@@ -56,131 +56,123 @@ const NotificationProviderInner: React.FC<{ children: React.ReactNode }> = ({ ch
   }, [sortNotifications])
 
   useEffect(() => {
-    const token = localStorage.getItem(STORAGE_KEYS.accessToken)
     let isActive = true
+    let retryTimeout: ReturnType<typeof setTimeout> | null = null
 
-    if (!token) {
-      console.warn('⚠️  No access token available')
-      return
-    }
+    const initializeNotifications = () => {
+      const token = localStorage.getItem(STORAGE_KEYS.accessToken)
 
-    console.log('🚀 NotificationContext initialized - loading notifications...')
-    
-    // Load initial notifications from API AND connect WebSocket in parallel
-    Promise.all([
-      loadNotifications(),
-      wsService.connect(token).then(() => {
-        if (isActive) {
-          setIsConnected(true)
-          console.log('✅ WebSocket connected for real-time notifications')
-        }
-      }).catch((error) => {
-        console.error('❌ WebSocket connection error:', error)
-        if (isActive) setIsConnected(false)
+      if (!token) {
+        // Token not yet available - wait a bit for AuthContext to initialize
+        if (retryTimeout) clearTimeout(retryTimeout)
+        retryTimeout = setTimeout(() => {
+          if (isActive) {
+            initializeNotifications()
+          }
+        }, 100)
+        return
+      }
+
+      console.log('🚀 NotificationContext initialized - loading notifications...')
+      
+      // Load initial notifications from API AND connect WebSocket in parallel
+      Promise.all([
+        loadNotifications(),
+        wsService.connect(token).then(() => {
+          if (isActive) {
+            setIsConnected(true)
+            console.log('✅ WebSocket connected for real-time notifications')
+          }
+        }).catch((error) => {
+          console.error('❌ WebSocket connection error:', error)
+          if (isActive) setIsConnected(false)
+        })
+      ]).catch(err => {
+        console.error('Error in initialization:', err)
       })
-    ]).catch(err => {
-      console.error('Error in initialization:', err)
-    })
 
-    // Handler: Initial sync (all notifications - both read and unread)
-    const handleInitialSync = (data: any) => {
-      if (isActive) {
-        const notifs = data.notifications || []
-        if (Array.isArray(notifs)) {
-          // 📌 Keep ALL notifications (read and unread) so notifications page shows everything
-          if (notifs.length > 0) {
-            const sorted = sortNotifications(notifs)
-            setNotifications(sorted)
-            const unread = sorted.filter((n: any) => !n.is_read).length
-            console.log(`📥 Initial sync: received ${sorted.length} notifications (${unread} unread)`)
+      // Handler: Initial sync (all notifications - both read and unread)
+      const handleInitialSync = (data: any) => {
+        if (isActive) {
+          const notifs = data.notifications || []
+          if (Array.isArray(notifs)) {
+            // 📌 Keep ALL notifications (read and unread) so notifications page shows everything
+            if (notifs.length > 0) {
+              const sorted = sortNotifications(notifs)
+              setNotifications(sorted)
+              const unread = sorted.filter((n: any) => !n.is_read).length
+              console.log(`📥 Initial sync: received ${sorted.length} notifications (${unread} unread)`)
+            } else {
+              console.log(`📥 Initial sync: no notifications`)
+              setNotifications([])
+            }
           } else {
-            console.log(`📥 Initial sync: no notifications`)
-            setNotifications([])
+            console.warn(`⚠️  Initial sync: received non-array notifications:`, data)
           }
-        } else {
-          console.warn(`⚠️  Initial sync: received non-array notifications:`, data)
         }
       }
-    }
 
-    // Handler: New notification created - SHOW TOAST!
-    const handleNotificationCreated = (data: any) => {
-      if (isActive && data.notification) {
-        const notif = data.notification
-        
-        // 🔴 CRITICAL: Don't add if already read (shouldn't happen, but be safe)
-        if (notif.is_read) {
-          console.warn(`⚠️  Received read notification in notification_created - ignoring: ${notif.id}`)
-          return
+      // Handler: New notification created
+      const handleNotificationNew = (data: any) => {
+        if (isActive && data.notification) {
+          const notif = data.notification
+          
+          setNotifications((prev) => {
+            // Deduplication: check if already exists
+            if (prev.find(n => n.id === notif.id)) {
+              console.debug(`ℹ️  Notification ${notif.id} already in list (skipped)`)
+              return prev
+            }
+            const updated = sortNotifications([notif, ...prev])
+            
+            // Limit to 100 latest notifications in memory
+            const limited = updated.slice(0, 100)
+            
+            console.log(`✨ New notification: ${notif.title} (ID: ${notif.id})`)
+            
+            return limited
+          })
         }
-        
-        setNotifications((prev) => {
-          // Deduplication: check if already exists
-          if (prev.find(n => n.id === notif.id)) {
-            console.debug(`ℹ️  Notification ${notif.id} already in list (skipped)`)
-            return prev
-          }
-          const updated = sortNotifications([notif, ...prev])
-          
-          // Limit to 50 latest notifications in memory
-          const limited = updated.slice(0, 50)
-          
-          // ✨ DO NOT SHOW TOAST - Keep notifications silent in the box only ✨
-          console.log(`✨ New notification: ${notif.title} (ID: ${notif.id})`)
-          
-          return limited
-        })
       }
+
+      // Handler: Notification status updated (e.g., marked as read)
+      const handleNotificationUpdated = (data: any) => {
+        if (isActive && data.notification) {
+          setNotifications((prev) => {
+            // 📌 Update notification WITHOUT removing it (keep ALL notifications)
+            const updated = prev.map((n) =>
+              n.id === data.notification.id ? data.notification : n
+            )
+            console.log(`✏️  Notification ${data.notification.id} updated (read: ${data.notification.is_read})`)
+            return sortNotifications(updated)
+          })
+        }
+      }
+
+      // Register WebSocket event handlers - must match backend event types!
+      wsService.on('initial_notifications', handleInitialSync)
+      wsService.on('notification', handleNotificationNew)  // <-- Backend sends 'notification'
+      wsService.on('notification_updated', handleNotificationUpdated)
     }
 
-    // Handler: Notification status updated (e.g., marked as read)
-    const handleNotificationUpdated = (data: any) => {
-      if (isActive && data.notification) {
-        setNotifications((prev) => {
-          // � Update notification WITHOUT removing it (keep ALL notifications)
-          const updated = prev.map((n) =>
-            n.id === data.notification.id ? data.notification : n
-          )
-          console.log(`✏️  Notification ${data.notification.id} updated (read: ${data.notification.is_read})`)
-          return sortNotifications(updated)
-        })
-      }
-    }
-
-    // Handler: Notification deleted
-    const handleNotificationDeleted = (data: any) => {
-      if (isActive && data.notification_id) {
-        setNotifications((prev) => {
-          const filtered = prev.filter(n => n.id !== data.notification_id)
-          console.log(`🗑️  Notification ${data.notification_id} deleted`)
-          return filtered
-        })
-      }
-    }
-
-    // Register WebSocket event handlers
-    wsService.on('initial_sync', handleInitialSync)
-    wsService.on('notification_created', handleNotificationCreated)
-    wsService.on('notification_updated', handleNotificationUpdated)
-    wsService.on('notification_deleted', handleNotificationDeleted)
+    // Start initialization
+    initializeNotifications()
 
     // Cleanup on unmount
     return () => {
       isActive = false
-      wsService.off('initial_sync', handleInitialSync)
-      wsService.off('notification_created', handleNotificationCreated)
-      wsService.off('notification_updated', handleNotificationUpdated)
-      wsService.off('notification_deleted', handleNotificationDeleted)
+      if (retryTimeout) clearTimeout(retryTimeout)
       wsService.disconnect()
       setIsConnected(false)
     }
-  }, [])
+  }, [sortNotifications, loadNotifications])
 
   const addNotification = useCallback((notification: Notification) => {
     setNotifications((prev) => sortNotifications([notification, ...prev]))
-  }, [])
+  }, [sortNotifications])
 
   const removeNotification = useCallback((id: number) => {
+    // Don't delete, just mark as read or remove from unread
     setNotifications((prev) => prev.filter((n) => n.id !== id))
   }, [])
 

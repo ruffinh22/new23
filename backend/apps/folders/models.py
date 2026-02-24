@@ -17,6 +17,8 @@ class Folder(models.Model):
         ('filiale', 'Filiale'),
         ('service', 'Service'),
         ('sub_service', 'Sous-service'),
+        ('year', 'Année'),
+        ('month', 'Mois'),
         # Anciens types (deprecated, pour compatibilité)
         ('branch', 'Filiale (legacy)'),
         ('department', 'Département (legacy)'),

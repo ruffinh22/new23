@@ -1,17 +1,23 @@
 """
 Routage WebSocket pour Django Channels.
+✅ Support des notifications et audit en temps réel
 """
 
-from django.urls import path
+from django.urls import path, re_path
 
 def get_websocket_urlpatterns():
     """
     Retourne les patterns WebSocket.
     Importé de manière différée pour éviter les problèmes d'initialisation Django.
     """
-    from apps.notifications.consumers import NotificationConsumer
+    from config.consumers import NotificationConsumer, AuditLogConsumer
+    
     return [
-        path('ws/notifications/', NotificationConsumer.as_asgi(), name='ws-notifications'),
+        # WebSocket pour les notifications en temps réel
+        re_path(r'ws/notifications/$', NotificationConsumer.as_asgi(), name='ws-notifications'),
+        
+        # WebSocket pour l'audit en temps réel (ADMIN ONLY)
+        re_path(r'ws/auditlog/$', AuditLogConsumer.as_asgi(), name='ws-auditlog'),
     ]
 
 websocket_urlpatterns = []  # Placeholder, sera rempli après Django initialization

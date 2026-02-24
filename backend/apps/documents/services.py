@@ -13,51 +13,101 @@ from apps.folders.models import Folder
 class DocumentService:
     """Service pour gérer les documents avec validation."""
     
-    MONTHS_FR = {
-        1: 'Janvier', 2: 'Février', 3: 'Mars', 4: 'Avril',
-        5: 'Mai', 6: 'Juin', 7: 'Juillet', 8: 'Août',
-        9: 'Septembre', 10: 'Octobre', 11: 'Novembre', 12: 'Décembre'
-    }
-    
     @staticmethod
-    def organize_document_folder(folder=None, created_at=None):
+    def organize_with_hierarchy(folder=None, agent=None, document_type=None):
         """
-        Organise le classement du document dans une hiérarchie Année/Mois.
+        Organise le document dans la hiérarchie: Filiale > Service > Type Doc
         
-        Si un dossier est fourni, crée une structure Année/Mois en dessous.
+        Crée automatiquement les dossiers manquants.
+        
+        ✅ VALIDATION: Vérifie que la Filiale est du bon Pôle de l'agent
         
         Args:
-            folder: Dossier parent (optionnel)
-            created_at: Date de création (défaut: maintenant)
+            folder: Dossier Filiale de base
+            agent: Utilisateur qui upload (pour accéder au Service et Pôle)
+            document_type: Type de document (pour créer le dossier spécifique)
         
         Returns:
-            Le dossier Mois où classer le document
+            Le dossier où placer le document
         """
         if not folder:
             return None
         
-        if not created_at:
-            created_at = timezone.now()
+        # ✅ VALIDATION: Vérifier que la Filiale est dans le BON Pôle
+        if agent and agent.pole:
+            # La filiale doit avoir le même Pôle parent que l'agent
+            # folder.parent = folder du Pôle (parent du parent est None pour une filiale racine)
+            folder_pole_id = folder.parent_id if folder.parent else None
+            
+            if folder_pole_id != agent.pole_id:
+                import logging
+                logger = logging.getLogger(__name__)
+                logger.warning(
+                    f"⚠️ Mismatch Pôle détecté!"
+                    f"\n  Filiale {folder.name} (ID:{folder.id}) Pôle parent: {folder_pole_id}"
+                    f"\n  Agent {agent.matricule} Pôle: {agent.pole_id}"
+                    f"\n  Correction: chercher le bon dossier..."
+                )
+                # Chercher le bon dossier avec le même nom mais du bon Pôle
+                try:
+                    pole_folder = agent.pole
+                    correct_filiale = Folder.objects.get(
+                        name=folder.name,
+                        parent=pole_folder,
+                        folder_type='filiale'
+                    )
+                    folder = correct_filiale
+                    logger.info(f"✅ Filiale corrigée: {folder.name} (ID:{folder.id}) du Pôle {pole_folder.name}")
+                except Folder.DoesNotExist:
+                    logger.error(f"❌ Impossible de trouver la filiale {folder.name} du Pôle {agent.pole.name}")
+                    pass  # Continuer avec le folder actuel
         
-        year = str(created_at.year)
-        month_num = created_at.month
-        month_name = DocumentService.MONTHS_FR.get(month_num, f'Mois {month_num}')
+        # Dossier courant = Filiale
+        current_folder = folder
         
-        # Créer ou récupérer le dossier Année
-        year_folder, _ = Folder.objects.get_or_create(
-            name=year,
-            parent=folder,
-            defaults={'description': f'Documents de l\'année {year}'}
-        )
+        # 1️⃣ Service (si l'agent en a un assigné)
+        if agent and agent.department:
+            service_name = agent.department.name
+            # ✅ Chercher le dossier service (peu importe son type actuuel)
+            try:
+                service_folder = Folder.objects.get(name=service_name, parent=current_folder)
+                # Si le type est incorrect, le mettre à jour
+                if service_folder.folder_type != 'service':
+                    service_folder.folder_type = 'service'
+                    service_folder.save()
+            except Folder.DoesNotExist:
+                # Créer le dossier service
+                service_folder = Folder.objects.create(
+                    name=service_name,
+                    parent=current_folder,
+                    folder_type='service',
+                    description=f'Service: {service_name}'
+                )
+            current_folder = service_folder
         
-        # Créer ou récupérer le dossier Mois
-        month_folder, _ = Folder.objects.get_or_create(
-            name=month_name,
-            parent=year_folder,
-            defaults={'description': f'Documents de {month_name} {year}'}
-        )
+        # 2️⃣ Dossier Type de Document
+        if document_type:
+            # Récupérer le libellé du type
+            type_label = dict(Document.DOCUMENT_TYPE_CHOICES).get(document_type, document_type)
+            
+            # ✅ Chercher le dossier type (peu importe son type actuel)
+            try:
+                type_folder = Folder.objects.get(name=type_label, parent=current_folder)
+                # Si le type est incorrect, le mettre à jour
+                if type_folder.folder_type != 'section':
+                    type_folder.folder_type = 'section'
+                    type_folder.save()
+            except Folder.DoesNotExist:
+                # Créer le dossier type
+                type_folder = Folder.objects.create(
+                    name=type_label,
+                    parent=current_folder,
+                    folder_type='section',
+                    description=f'Type: {type_label}'
+                )
+            current_folder = type_folder
         
-        return month_folder
+        return current_folder
     
     @staticmethod
     def create_document_with_validation(
@@ -66,6 +116,7 @@ class DocumentService:
         document_type: str,
         agent,
         folder=None,
+        folder_id=None,
         description: str = "",
         auto_validate: bool = True
     ) -> tuple:
@@ -74,6 +125,9 @@ class DocumentService:
         
         Si un dossier est fourni, le document est automatiquement organisé
         dans une structure Année/Mois.
+        
+        Si aucun dossier n'est fourni, essaie de déterminer le dossier automatiquement
+        via les routing rules basées sur l'agent et le type de document.
         
         Returns:
             Tuple (document, validation_result, is_valid)
@@ -85,8 +139,83 @@ class DocumentService:
         except DocumentSpecification.DoesNotExist:
             specification = None
         
-        # Organiser le dossier avec la structure Année/Mois
-        organized_folder = DocumentService.organize_document_folder(folder)
+        # Si folder_id est fourni, l'utiliser
+        if folder_id and not folder:
+            try:
+                from apps.folders.models import Folder
+                candidate_folder = Folder.objects.get(id=folder_id)
+                
+                # ✅ VALIDATION: Vérifier que le dossier est du bon Pôle
+                if agent and agent.pole:
+                    # Déterminer le Pôle du dossier
+                    folder_pole_id = candidate_folder.parent_id if candidate_folder.parent else None
+                    
+                    # Si c'est une sous-structure (Service/Type), remonter jusqu'à la Filiale
+                    if candidate_folder.folder_type not in ['pole', 'filiale']:
+                        # Chercher le parent Filiale
+                        temp = candidate_folder.parent
+                        while temp and temp.folder_type != 'filiale':
+                            temp = temp.parent
+                        if temp:
+                            folder_pole_id = temp.parent_id
+                    
+                    # Vérifier que c'est du bon Pôle
+                    if folder_pole_id != agent.pole_id:
+                        import logging
+                        logger = logging.getLogger(__name__)
+                        logger.warning(
+                            f"⚠️ Dossier {candidate_folder.name} (ID:{folder_id}) du mauvais Pôle!"
+                            f"\n  Folder Pôle: {folder_pole_id}, Agent Pôle: {agent.pole_id}"
+                            f"\n  Utilisation de la Filiale de l'agent à la place"
+                        )
+                        # Ne pas utiliser ce dossier, laisser folder = None pour utiliser la branche de l'agent
+                    else:
+                        folder = candidate_folder
+                else:
+                    folder = candidate_folder
+            except Folder.DoesNotExist:
+                pass  # Continuer sans
+        
+        # Si aucun dossier n'est fourni, essayer de le déterminer automatiquement
+        if folder is None:
+            try:
+                from apps.routing_rules.models import RoutingRule
+                # Chercher la règle de routing pour ce type de document
+                routing_rule = RoutingRule.objects.filter(
+                    document_type=document_type,
+                    is_active=True
+                ).first()
+                
+                if routing_rule:
+                    # Créer un objet Document temporaire pour que get_destination_folder() l'utilise
+                    temp_doc = Document(
+                        title=title,
+                        file=file,
+                        document_type=document_type,
+                        agent=agent,
+                        description=description,
+                    )
+                    # Déterminer le dossier destination
+                    folder = routing_rule.get_destination_folder(temp_doc)
+                else:
+                    # Pas de règle de routing, utiliser la filiale de l'agent par défaut
+                    if agent.branch:
+                        folder = agent.branch
+            except Exception as e:
+                import logging
+                logger = logging.getLogger(__name__)
+                logger.warning(f"[DocumentService] Erreur lors de la détermination du dossier: {e}")
+                # En cas d'erreur, utiliser la filiale de l'agent
+                if agent.branch:
+                    folder = agent.branch
+        
+        # ✅ Construire la hiérarchie: Pole > Filiale > Service > Type Doc
+        # Si l'agent a un Service assigné, créer la structure complète
+        organized_folder = DocumentService.organize_with_hierarchy(
+            folder=folder,
+            agent=agent,
+            document_type=document_type
+        )
         
         # Créer le document avec le statut d'attente de validation
         with transaction.atomic():
@@ -95,7 +224,7 @@ class DocumentService:
                 file=file,
                 document_type=document_type,
                 agent=agent,
-                folder=organized_folder,  # Utiliser le dossier organisé (Année/Mois)
+                folder=organized_folder,  # Structure hiérarchique: Filiale > Service > Type Doc
                 description=description,
                 specification=specification,
                 status='VALIDATION_EN_COURS',
@@ -233,3 +362,135 @@ class DocumentService:
             Tuple (is_valid, error_message)
         """
         return FileTypeValidator.validate_file(file)
+
+
+class DocumentFilterService:
+    """✅ SERVICE: Centralise la logique de filtrage des documents.
+    
+    Élimine la logique métier du DocumentViewSet.list().
+    Fournit une interface propre pour filtrer les documents selon:
+    - Permissions utilisateur (admin vs user)
+    - Statut
+    - Type
+    - Date
+    - Département
+    - Dossier
+    """
+    
+    def __init__(self, user):
+        """Initialise le service avec l'utilisateur.
+        
+        Args:
+            user: User object (pour les permissions)
+        """
+        self.user = user
+        self.is_admin = self._check_admin()
+    
+    def _check_admin(self) -> bool:
+        """Vérifie si l'utilisateur est admin (single source of truth)."""
+        if not self.user or not self.user.is_authenticated:
+            return False
+        return (
+            self.user.is_staff or 
+            self.user.is_superuser or 
+            (hasattr(self.user, 'role') and self.user.role == 'ADMIN')
+        )
+    
+    def get_accessible_documents(self):
+        """Retourne les documents accessibles pour cet utilisateur.
+        
+        Logique:
+        - Admin → tous les documents
+        - User → ses propres documents
+        
+        Returns:
+            QuerySet: Documents filtrés + optimisés (select_related, prefetch_related)
+        """
+        from django.db.models import Prefetch
+        
+        if self.is_admin:
+            queryset = Document.objects.all()
+        else:
+            queryset = Document.objects.filter(agent=self.user)
+        
+        # ✅ OPTIMISATION: Pré-charger les relations pour éviter N+1
+        return queryset.select_related(
+            'agent__department',
+            'folder',
+            'specification',
+            'routing_rule_applied',
+            'validation_result'
+        ).prefetch_related(
+            'folder__parent__parent__parent__parent__parent'  # Hiérarchie jusqu'à 6 niveaux
+        )
+    
+    def apply_filters(self, queryset, filters: dict):
+        """Applique tous les filtres à un queryset.
+        
+        Args:
+            queryset: QuerySet initial
+            filters: Dict des filtres à appliquer
+                - agent: 'me' | 'all' (pour admins seulement)
+                - status: statut du document
+                - document_type: type de document
+                - department_id: ID du département
+                - folder_id: ID du dossier
+                - created_after: date min (YYYY-MM-DD)
+                - created_before: date max (YYYY-MM-DD)
+                - search: recherche texte (title, description)
+        
+        Returns:
+            QuerySet: Queryset filtré
+        """
+        from django.db.models import Q
+        
+        # Filtre agent (override pour les admins)
+        agent_filter = filters.get('agent')
+        if agent_filter == 'me':
+            queryset = queryset.filter(agent=self.user)
+        elif agent_filter == 'all' and not self.is_admin:
+            # Les non-admins ne peuvent pas demander "tous"
+            queryset = queryset.filter(agent=self.user)
+        
+        # Filtres simples
+        if filters.get('status'):
+            queryset = queryset.filter(status=filters['status'])
+        
+        if filters.get('document_type'):
+            queryset = queryset.filter(document_type=filters['document_type'])
+        
+        if filters.get('department_id'):
+            queryset = queryset.filter(agent__department_id=filters['department_id'])
+        
+        if filters.get('folder_id'):
+            queryset = queryset.filter(folder_id=filters['folder_id'])
+        
+        # Plage de dates
+        if filters.get('created_after'):
+            queryset = queryset.filter(created_at__gte=filters['created_after'])
+        
+        if filters.get('created_before'):
+            queryset = queryset.filter(created_at__lte=filters['created_before'])
+        
+        # Recherche texte
+        if filters.get('search'):
+            search = filters['search']
+            queryset = queryset.filter(
+                Q(title__icontains=search) |
+                Q(description__icontains=search)
+            )
+        
+        return queryset
+    
+    def get_filtered_documents(self, filters: dict = None):
+        """Méthode pratique: récupère + filtre en une seule appelée.
+        
+        Args:
+            filters: Dict des filtres (voir apply_filters)
+        
+        Returns:
+            QuerySet: Documents filtrés et optimisés
+        """
+        filters = filters or {}
+        queryset = self.get_accessible_documents()
+        return self.apply_filters(queryset, filters)

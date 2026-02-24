@@ -1,0 +1,164 @@
+📋 REAL-TIME VERIFICATION CHECKLIST
+==================================
+
+After creating notification in Django shell, check these in Browser Console (F12):
+
+✅ STEP 1: WebSocket Connection
+Look for message:
+  ✅ WebSocket connecté
+  ✅ Message reçu: initial_notifications
+
+✅ STEP 2: Notification Signal Delivery
+When you CREATE notification, look for:
+  📨 Message reçu: notification
+  (This means the signal was delivered!)
+
+✅ STEP 3: Data Structure
+The message should contain:
+  {
+    "type": "notification",
+    "notification": {
+      "id": 20,
+      "title": "Test Notification",
+      "message": "Should appear INSTANTLY!",
+      "notification_type": "DOCUMENT_UPLOADED",
+      "created_at": "2026-02-24T...",
+      "is_read": false
+    }
+  }
+
+---
+
+🔍 WHAT TO CHECK IN BROWSER:
+
+1. Open http://localhost:5174
+2. Make sure you're logged in as TESTADMIN
+3. Open DevTools: Press F12
+4. Go to Console tab
+5. Search for: notification
+6. You should see messages like:
+
+   ✅ WebSocket connecté
+   ✅ Message reçu: initial_notifications
+   (loading existing notifications)
+   
+   Then when you create new notification in shell:
+   
+   ✅ Message reçu: notification
+   (NEW notification received!)
+
+---
+
+🎯 IF YOU SEE THIS IN CONSOLE:
+   📨 Message reçu: notification
+
+THEN:
+   ✅ Backend Signal: Working ✓
+   ✅ WebSocket Delivery: Working ✓
+   ✅ Frontend Reception: Working ✓
+   ✅ REAL-TIME IS WORKING!
+
+The notification should also appear in the UI instantly!
+
+---
+
+❌ IF YOU DON'T SEE MESSAGE IN CONSOLE:
+
+Issue 1: WebSocket not connected?
+   → Check: Is backend running?
+   → Check: Is Redis running? (redis-cli ping)
+   → Check: Browser console for connection errors
+
+Issue 2: Not receiving "notification" type?
+   → Possible message went to wrong group
+   → Check backend logs for broadcast message
+
+Issue 3: Notification in DB but not in real-time?
+   → Signal might not be triggered
+   → Check: Is apps.common.signals imported?
+   → Check: Is apps.notifications.signals imported?
+
+---
+
+📊 TEST WITH MULTIPLE NOTIFICATIONS:
+
+In Django shell:
+
+from django.contrib.auth import get_user_model
+from apps.notifications.models import Notification
+
+admin = get_user_model().objects.get(matricule='TESTADMIN')
+
+for i in range(3):
+    Notification.objects.create(
+        recipient=admin,
+        notification_type='DOCUMENT_UPLOADED',
+        title=f'Test Notification {i+1}',
+        message=f'This is test {i+1}',
+        is_read=False
+    )
+    print(f'Created notification {i+1}')
+
+Expected in browser:
+   ✅ 3 messages: Message reçu: notification
+   ✅ 3 notifications appear in UI
+   ✅ All instantly!
+
+---
+
+⏱️ TIMING TEST:
+
+1. Keep browser console OPEN
+2. In Django shell, create notification
+3. MEASURE time from:
+   - Shell: "Created notification X"
+   - Console: Receives message
+   - UI: Shows notification
+   
+Should be < 1 second (very instant!)
+
+---
+
+🔐 AUDIT LOGS TEST (Admin Only):
+
+1. Make sure you're logged in as ADMIN or is_staff=True
+2. In browser, go to admin audit dashboard
+3. Keep console open
+4. In Django shell:
+
+from apps.common.audit import AuditLog
+
+admin = get_user_model().objects.get(matricule='TESTADMIN')
+AuditLog.objects.create(
+    actor=admin,
+    action='DOCUMENT_UPLOAD',
+    severity='INFO',
+    description='Test audit log',
+    ip_address='127.0.0.1'
+)
+
+Expected:
+   ✅ Console: Message reçu: auditlog
+   ✅ Dashboard: Audit log appears instantly
+
+---
+
+✅ SUCCESS CRITERIA:
+
+All real-time working when:
+   ✓ Notification in shell → appears in browser < 1 sec
+   ✓ Audit log in shell → appears in admin dashboard < 1 sec
+   ✓ No page refresh needed
+   ✓ Console shows delivery messages
+   ✓ Both work with multiple items
+
+---
+
+📞 NEED MORE INFO?
+
+1. What do you see in browser console?
+2. Is WebSocket connected?
+3. Do you see "Message reçu: notification"?
+4. Do notifications appear in UI?
+
+Share the console output and we can debug further!

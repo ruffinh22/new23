@@ -90,12 +90,6 @@ const NAV_ITEMS: NavItem[] = [
     sectionLabel: 'Administration'
   },
   {
-    label: 'Departments',
-    path: '/departments',
-    icon: <Building size={20} />,
-    roles: ['ADMIN'],
-  },
-  {
     label: 'Folders',
     path: '/folders',
     icon: <FolderOpen size={20} />,

@@ -60,31 +60,48 @@ export const FolderExplorer: React.FC<FolderExplorerProps> = ({
   const [viewMode, setViewMode] = useState<'table' | 'grid'>('table')
 
   useEffect(() => {
-    fetchFolderStructure()
-    
-    // Polling automatique toutes les 30 secondes pour détecter les nouveaux départements
+    // Premier chargement : avec spinner + initialisation de l'expansion
+    fetchFolderStructure(false)
+
+    // Polling silencieux toutes les 30 secondes : sans spinner, sans reset de l'expansion
     const pollInterval = setInterval(() => {
-      console.log('🔄 Polling folder_structure...')
-      fetchFolderStructure()
-    }, 30000) // 30 secondes
-    
+      console.log('🔄 Polling folder_structure (silencieux)...')
+      fetchFolderStructure(true)
+    }, 30000)
+
     return () => clearInterval(pollInterval)
   }, [])
 
-  const fetchFolderStructure = async () => {
-    setLoading(true)
+  /**
+   * @param isBackgroundRefresh
+   *   - false (défaut) : premier chargement → affiche le spinner + initialise les dossiers ouverts
+   *   - true           : rafraîchissement silencieux → met à jour les données sans perturber l'UI
+   */
+  const fetchFolderStructure = async (isBackgroundRefresh = false) => {
+    // Afficher le spinner uniquement au premier chargement
+    if (!isBackgroundRefresh) {
+      setLoading(true)
+    }
+
     try {
       const response = await apiClient.get('/documents/folder_structure/')
       console.log('Réponse complète du folder_structure:', response.data)
       setRootNode(response.data)
-      // Expand first level by default
-      setExpandedFolders(new Set(['']))
+
+      // Initialiser l'expansion uniquement au premier chargement
+      // pour ne pas écraser la navigation en cours de l'utilisateur
+      if (!isBackgroundRefresh) {
+        setExpandedFolders(new Set(['']))
+      }
+
       setError('')
     } catch (err: any) {
       setError(err.message || 'Erreur lors du chargement des dossiers')
       console.error('Erreur:', err)
     } finally {
-      setLoading(false)
+      if (!isBackgroundRefresh) {
+        setLoading(false)
+      }
     }
   }
 
@@ -99,14 +116,11 @@ export const FolderExplorer: React.FC<FolderExplorerProps> = ({
   }
 
   const getFileFormat = (fileName: string): string => {
-    // Extraire le nom du fichier (dernière partie après /)
     const nameOnly = fileName.split('/').pop() || ''
-    // Extraire l'extension (dernière partie après .)
     return nameOnly.split('.').pop()?.toUpperCase() || 'N/A'
   }
 
   const getFileDate = (fileName: string): string => {
-    // Extraire la date du nom du fichier (format: NAME_YYYYMMDD_HHMMSS.ext)
     const dateMatch = fileName.match(/(\d{8})_(\d{6})/)
     if (dateMatch) {
       const year = dateMatch[1].substring(0, 4)
@@ -125,15 +139,13 @@ export const FolderExplorer: React.FC<FolderExplorerProps> = ({
     const items: any[] = []
     for (const child of node.children) {
       const childPath = `${currentPath}/${child.name}`.replace(/^\//, '')
-      
+
       if (child.type === 'folder') {
         items.push({ ...child, path: childPath, level })
         if (expandedFolders.has(childPath)) {
           items.push(...collectAllItems(child, childPath, level + 1))
         }
       } else if (child.type === 'file' && showFilesInline) {
-        // Afficher les fichiers seulement si showFilesInline est true
-        // Utiliser le path du backend (chemin réel du fichier sur le disque) au lieu du chemin construit
         items.push({ ...child, path: child.path || childPath, level })
       }
     }
@@ -149,14 +161,12 @@ export const FolderExplorer: React.FC<FolderExplorerProps> = ({
       const fileName = filePath.split('/').pop() || 'fichier'
       console.log('📥 Téléchargement - Chemin complet:', filePath)
       console.log('📥 Téléchargement - Nom de fichier:', fileName)
-      
-      // Utiliser apiClient avec authentification au lieu d'un lien direct
+
       const downloadAsync = async () => {
         const response = await apiClient.get(`/documents/download/?path=${encodeURIComponent(filePath)}`, {
           responseType: 'blob'
         })
-        
-        // Créer un blob et télécharger
+
         const url = window.URL.createObjectURL(response.data)
         const link = document.createElement('a')
         link.href = url
@@ -167,7 +177,7 @@ export const FolderExplorer: React.FC<FolderExplorerProps> = ({
         window.URL.revokeObjectURL(url)
         console.log('Téléchargement démarré pour:', filePath)
       }
-      
+
       downloadAsync().catch(err => {
         console.error('Erreur lors du téléchargement:', err)
         alert('Erreur lors du téléchargement')
@@ -182,7 +192,6 @@ export const FolderExplorer: React.FC<FolderExplorerProps> = ({
   const handleView = (filePath: string, e?: React.MouseEvent) => {
     e?.stopPropagation()
     try {
-      // Vérifier que c'est un fichier (avec extension)
       const fileName = filePath.split('/').pop() || 'fichier'
       if (!fileName.includes('.')) {
         alert('Sélectionnez un fichier, pas un dossier')
@@ -207,9 +216,8 @@ export const FolderExplorer: React.FC<FolderExplorerProps> = ({
       try {
         console.log('Suppression du fichier:', filePath)
         alert('Le fichier a été supprimé avec succès')
-        // Vous pouvez ajouter ici un appel API pour supprimer le fichier
         // await apiClient.delete(`/documents/delete/?path=${filePath}`)
-        // Puis rafraîchir la liste des fichiers
+        // fetchFolderStructure(true) // rafraîchissement silencieux après suppression
       } catch (err) {
         console.error('Erreur lors de la suppression:', err)
         alert('Erreur lors de la suppression du fichier')
@@ -248,7 +256,7 @@ export const FolderExplorer: React.FC<FolderExplorerProps> = ({
   // Render tree view pour mode "dossiers seulement"
   const renderFolderTree = (node: FileNode, level: number = 0) => {
     if (!node.children) return null
-    
+
     return (
       <ul className="list-none space-y-0.5">
         {node.children
@@ -282,12 +290,12 @@ export const FolderExplorer: React.FC<FolderExplorerProps> = ({
                       <ChevronRight size={18} className="stroke-[2.5]" />
                     )}
                   </span>
-                  <Folder 
-                    size={18} 
+                  <Folder
+                    size={18}
                     className={`
                       flex-shrink-0 transition-all duration-200
                       ${isExpanded ? 'text-amber-500' : 'text-amber-400 group-hover:text-amber-500'}
-                    `} 
+                    `}
                   />
                   <span className={`
                     font-medium text-sm transition-colors duration-200
@@ -348,8 +356,8 @@ export const FolderExplorer: React.FC<FolderExplorerProps> = ({
                   className={`
                     flex items-center gap-2 px-3 py-1.5 rounded-md text-sm font-medium
                     transition-all duration-200
-                    ${viewMode === 'table' 
-                      ? 'bg-white text-primary-700 shadow-sm' 
+                    ${viewMode === 'table'
+                      ? 'bg-white text-primary-700 shadow-sm'
                       : 'text-white/80 hover:text-white hover:bg-white/10'
                     }
                   `}
@@ -363,8 +371,8 @@ export const FolderExplorer: React.FC<FolderExplorerProps> = ({
                   className={`
                     flex items-center gap-2 px-3 py-1.5 rounded-md text-sm font-medium
                     transition-all duration-200
-                    ${viewMode === 'grid' 
-                      ? 'bg-white text-primary-700 shadow-sm' 
+                    ${viewMode === 'grid'
+                      ? 'bg-white text-primary-700 shadow-sm'
                       : 'text-white/80 hover:text-white hover:bg-white/10'
                     }
                   `}
@@ -377,7 +385,7 @@ export const FolderExplorer: React.FC<FolderExplorerProps> = ({
             </div>
           </div>
 
-          {/* Table View - Modernisé */}
+          {/* Table View */}
           {viewMode === 'table' ? (
             <div className="overflow-x-auto bg-white">
               <table className="w-full text-sm">
@@ -404,12 +412,10 @@ export const FolderExplorer: React.FC<FolderExplorerProps> = ({
                             cursor-pointer transition-all duration-200 group
                             ${visibleIdx % 2 === 0 ? 'bg-white hover:bg-primary-50/30' : 'bg-gray-50/50 hover:bg-primary-50/40'}
                           `}
-                          onClick={() => {
-                            toggleFolder(item.path)
-                          }}
+                          onClick={() => toggleFolder(item.path)}
                         >
-                          <td 
-                            className="px-5 py-3.5 border-r border-gray-200" 
+                          <td
+                            className="px-5 py-3.5 border-r border-gray-200"
                             style={{ paddingLeft: `${item.level * 24 + 20}px` }}
                           >
                             <div className={`
@@ -428,8 +434,8 @@ export const FolderExplorer: React.FC<FolderExplorerProps> = ({
                               <div className={`
                                 w-8 h-8 rounded-lg flex items-center justify-center
                                 transition-all duration-200
-                                ${isExpanded 
-                                  ? 'bg-amber-100 text-amber-600' 
+                                ${isExpanded
+                                  ? 'bg-amber-100 text-amber-600'
                                   : 'bg-amber-50 text-amber-500 group-hover:bg-amber-100 group-hover:text-amber-600'
                                 }
                               `}>
@@ -449,14 +455,12 @@ export const FolderExplorer: React.FC<FolderExplorerProps> = ({
                         </tr>
                       )
                     } else {
-                      // Pour les fichiers
                       const agentName = item.agent_username || extractAgentName(item.name)
                       const format = getFileFormat(item.name)
                       const fileDate = item.created_at ? new Date(item.created_at).toLocaleDateString('fr-FR') : getFileDate(item.name)
                       const fileSize = item.size ? `${(item.size / 1024).toFixed(1)} KB` : 'N/A'
                       const status = item.status || 'NOUVEAU'
-                      
-                      // Couleurs et labels de statut - Modernisés
+
                       const statusConfig: Record<string, { bg: string; text: string; label: string }> = {
                         'NOUVEAU': { bg: 'bg-blue-100', text: 'text-blue-700', label: 'Nouveau' },
                         'EN_COURS': { bg: 'bg-amber-100', text: 'text-amber-700', label: 'En cours' },
@@ -467,15 +471,15 @@ export const FolderExplorer: React.FC<FolderExplorerProps> = ({
                       const config = statusConfig[status] || { bg: 'bg-gray-100', text: 'text-gray-700', label: status }
 
                       return (
-                        <tr 
-                          key={visibleIdx} 
+                        <tr
+                          key={visibleIdx}
                           className={`
                             transition-all duration-200 group
                             ${visibleIdx % 2 === 0 ? 'bg-white hover:bg-blue-50/30' : 'bg-gray-50/50 hover:bg-blue-50/40'}
                           `}
                         >
-                          <td 
-                            className="px-5 py-3.5 border-r border-gray-200" 
+                          <td
+                            className="px-5 py-3.5 border-r border-gray-200"
                             style={{ paddingLeft: `${item.level * 24 + 20}px` }}
                           >
                             <span className="text-2xl transition-transform duration-200 group-hover:scale-110 inline-block">
@@ -513,23 +517,23 @@ export const FolderExplorer: React.FC<FolderExplorerProps> = ({
                           <td className="px-5 py-3.5 text-gray-600 text-xs border-r border-gray-200">{fileDate}</td>
                           <td className="px-5 py-3.5">
                             <div className="flex items-center justify-center gap-1.5">
-                              <button 
+                              <button
                                 onClick={(e) => handleDownload(item.path!, e)}
-                                className="p-2 hover:bg-blue-100 text-gray-600 hover:text-blue-600 rounded-lg transition-all duration-200 hover:scale-110 active:scale-95 group/btn" 
+                                className="p-2 hover:bg-blue-100 text-gray-600 hover:text-blue-600 rounded-lg transition-all duration-200 hover:scale-110 active:scale-95 group/btn"
                                 title="Télécharger"
                               >
                                 <Download size={16} className="group-hover/btn:animate-bounce-subtle" />
                               </button>
-                              <button 
+                              <button
                                 onClick={(e) => handleView(item.path!, e)}
-                                className="p-2 hover:bg-emerald-100 text-gray-600 hover:text-emerald-600 rounded-lg transition-all duration-200 hover:scale-110 active:scale-95 group/btn" 
+                                className="p-2 hover:bg-emerald-100 text-gray-600 hover:text-emerald-600 rounded-lg transition-all duration-200 hover:scale-110 active:scale-95 group/btn"
                                 title="Voir"
                               >
                                 <Eye size={16} className="group-hover/btn:animate-pulse-subtle" />
                               </button>
-                              <button 
+                              <button
                                 onClick={(e) => handleDelete(item.path!, e)}
-                                className="p-2 hover:bg-rose-100 text-gray-600 hover:text-rose-600 rounded-lg transition-all duration-200 hover:scale-110 active:scale-95 group/btn" 
+                                className="p-2 hover:bg-rose-100 text-gray-600 hover:text-rose-600 rounded-lg transition-all duration-200 hover:scale-110 active:scale-95 group/btn"
                                 title="Supprimer"
                               >
                                 <Trash2 size={16} className="group-hover/btn:animate-sway" />
@@ -554,7 +558,7 @@ export const FolderExplorer: React.FC<FolderExplorerProps> = ({
               )}
             </div>
           ) : (
-            /* Grid View - Nouveau */
+            /* Grid View */
             <div className="p-6 bg-gradient-to-br from-gray-50 to-white">
               <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-4">
                 {allItems.filter(item => item.type === 'file').map((item, idx) => {
@@ -563,7 +567,7 @@ export const FolderExplorer: React.FC<FolderExplorerProps> = ({
                   const fileDate = item.created_at ? new Date(item.created_at).toLocaleDateString('fr-FR') : getFileDate(item.name)
                   const fileSize = item.size ? `${(item.size / 1024).toFixed(1)} KB` : 'N/A'
                   const status = item.status || 'NOUVEAU'
-                  
+
                   const statusConfig: Record<string, { bg: string; text: string; label: string }> = {
                     'NOUVEAU': { bg: 'bg-blue-100', text: 'text-blue-700', label: 'Nouveau' },
                     'EN_COURS': { bg: 'bg-amber-100', text: 'text-amber-700', label: 'En cours' },
@@ -587,11 +591,11 @@ export const FolderExplorer: React.FC<FolderExplorerProps> = ({
                           {config.label}
                         </span>
                       </div>
-                      
+
                       <h4 className="font-semibold text-gray-900 text-sm mb-2 truncate group-hover:text-primary-700 transition-colors">
                         {item.name}
                       </h4>
-                      
+
                       <div className="flex items-center gap-2 mb-3 text-xs text-gray-600">
                         <div className="w-5 h-5 rounded-full bg-gradient-to-br from-primary-500 to-accent-500 flex items-center justify-center text-white text-[10px] font-bold">
                           {agentName[0]?.toUpperCase()}
@@ -607,16 +611,16 @@ export const FolderExplorer: React.FC<FolderExplorerProps> = ({
                       <div className="flex items-center justify-between pt-3 border-t border-gray-100">
                         <span className="text-xs text-gray-500">{fileDate}</span>
                         <div className="flex items-center gap-1">
-                          <button 
+                          <button
                             onClick={(e) => handleDownload(item.path!, e)}
-                            className="p-1.5 hover:bg-blue-100 text-gray-600 hover:text-blue-600 rounded-lg transition-all duration-200" 
+                            className="p-1.5 hover:bg-blue-100 text-gray-600 hover:text-blue-600 rounded-lg transition-all duration-200"
                             title="Télécharger"
                           >
                             <Download size={14} />
                           </button>
-                          <button 
+                          <button
                             onClick={(e) => handleDelete(item.path!, e)}
-                            className="p-1.5 hover:bg-rose-100 text-gray-600 hover:text-rose-600 rounded-lg transition-all duration-200" 
+                            className="p-1.5 hover:bg-rose-100 text-gray-600 hover:text-rose-600 rounded-lg transition-all duration-200"
                             title="Supprimer"
                           >
                             <Trash2 size={14} />
@@ -644,12 +648,12 @@ export const FolderExplorer: React.FC<FolderExplorerProps> = ({
           <div className="border-t border-gray-200 bg-gradient-to-r from-gray-50 to-white px-6 py-4">
             <div className="flex items-center justify-between">
               <p className="text-sm text-gray-600 font-medium">
-                <span className="text-primary-700 font-bold">{allItems.length}</span> élément{allItems.length !== 1 ? 's' : ''} 
+                <span className="text-primary-700 font-bold">{allItems.length}</span> élément{allItems.length !== 1 ? 's' : ''}
                 <span className="mx-2 text-gray-400">•</span>
                 <span className="text-gray-500">{allItems.filter(i => i.type === 'file').length} fichier{allItems.filter(i => i.type === 'file').length !== 1 ? 's' : ''}</span>
               </p>
-              <button 
-                onClick={fetchFolderStructure}
+              <button
+                onClick={() => fetchFolderStructure(false)}
                 className="text-sm font-medium text-primary-600 hover:text-primary-700 transition-colors duration-200 flex items-center gap-2 group"
               >
                 <Loader size={14} className="group-hover:animate-spin" />

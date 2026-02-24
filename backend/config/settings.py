@@ -147,16 +147,34 @@ WSGI_APPLICATION = 'config.wsgi.application'
 ASGI_APPLICATION = 'config.asgi.application'
 
 # Channel Layers Configuration (using Redis)
+# For development: Redis should be running on localhost:6379
+# For Docker: Redis runs on sgdra-redis:6379
+import socket
+
+def is_redis_available(host, port):
+    """Check if Redis is accessible"""
+    try:
+        socket.create_connection((host, port), timeout=1)
+        return True
+    except (socket.timeout, socket.error, OSError):
+        return False
+
+# Try localhost first for development, then Docker hostname
+REDIS_HOST = 'localhost' if is_redis_available('localhost', 6379) else 'sgdra-redis'
+REDIS_PORT = 6379
+
 CHANNEL_LAYERS = {
     "default": {
         "BACKEND": "channels_redis.core.RedisChannelLayer",
         "CONFIG": {
-            "hosts": [("sgdra-redis", 6379)],  # Use Docker service name 'sgdra-redis'
+            "hosts": [(REDIS_HOST, REDIS_PORT)],
             "capacity": 1500,
             "expiry": 10,
         },
     },
 }
+
+print(f"🔌 Redis configured for {REDIS_HOST}:{REDIS_PORT}")
 
 # ==========================================
 # DATABASE CONFIGURATION
@@ -210,6 +228,12 @@ AUTH_PASSWORD_VALIDATORS = [
     {
         'NAME': 'django.contrib.auth.password_validation.NumericPasswordValidator',
     },
+]
+
+# Custom authentication backend for matricule field
+AUTHENTICATION_BACKENDS = [
+    'apps.users.backends.MatriculeBackend',
+    'django.contrib.auth.backends.ModelBackend',  # Fallback for django admin
 ]
 
 # Internationalization

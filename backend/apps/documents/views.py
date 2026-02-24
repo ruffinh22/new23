@@ -1,13 +1,9 @@
-"""
-Vues API pour les documents avec validation.
-"""
-
 from rest_framework import viewsets, status, permissions
 from rest_framework.decorators import action
 from rest_framework.response import Response
 from rest_framework.parsers import MultiPartParser, FormParser, JSONParser
 from django.shortcuts import get_object_or_404
-from django.db.models import Q
+from django.db.models import Q, Prefetch
 from django.db import transaction
 from django.utils import timezone
 from django.http import FileResponse, HttpResponse, StreamingHttpResponse
@@ -23,8 +19,9 @@ from .serializers import (
     DocumentValidationResultSerializer,
     DocumentTransferSerializer,
 )
-from .services import DocumentService
+from .services import DocumentService, DocumentFilterService
 from .permissions import IsAdmin, IsOwnerOrAdmin
+from apps.common.mixins import PermissionMixin, FilterMixin
 
 
 class DocumentSpecificationViewSet(viewsets.ModelViewSet):
@@ -60,37 +57,22 @@ class DocumentSpecificationViewSet(viewsets.ModelViewSet):
         return Response(serializer.data)
 
 
-class DocumentViewSet(viewsets.ModelViewSet):
-    """ViewSet pour les documents avec validation."""
+class DocumentViewSet(PermissionMixin, FilterMixin, viewsets.ModelViewSet):
+    """ViewSet pour les documents avec validation.
+    
+    ✅ UTILISE:
+    - PermissionMixin: Pour is_admin() centralisé
+    - FilterMixin: Pour filtres réutilisables
+    - DocumentFilterService: Pour logique de filtrage métier
+    """
     
     permission_classes = [permissions.IsAuthenticated]
     parser_classes = (MultiPartParser, FormParser, JSONParser)
     
     def get_queryset(self):
-        """Retourne les documents selon les permissions."""
-        user = self.request.user
-        
-        # Les utilisateurs peuvent voir leurs propres documents
-        queryset = Document.objects.filter(agent=user)
-        
-        # Les administrateurs voient tous les documents
-        # Vérifier à la fois le système standard Django ET le champ role custom
-        try:
-            is_admin = user.is_staff or user.is_superuser or (hasattr(user, 'role') and user.role == 'ADMIN')
-        except Exception as e:
-            print(f"[ERROR] Error checking admin status: {e}")
-            is_admin = user.is_staff or user.is_superuser
-        
-        if is_admin:
-            queryset = Document.objects.all()
-        
-        return queryset.select_related(
-            'agent',
-            'folder',
-            'specification',
-            'routing_rule_applied',
-            'validation_result'
-        )
+        """Retourne les documents selon les permissions + optimisations."""
+        filter_service = DocumentFilterService(self.request.user)
+        return filter_service.get_accessible_documents()
     
     def get_serializer_class(self):
         """Retourne le sérialiseur approprié selon l'action."""
@@ -102,48 +84,27 @@ class DocumentViewSet(viewsets.ModelViewSet):
             return DocumentDetailSerializer
     
     def list(self, request, *args, **kwargs):
-        """Retourne la liste des documents avec filtres appliqués au backend."""
-        # ✅ CORRECTION: Gérer agent=me / agent=all
-        agent_filter = request.query_params.get('agent')
-        if agent_filter == 'me':
-            # Forcer le filtre à l'agent courant (même si l'utilisateur est admin)
-            queryset = Document.objects.filter(agent=request.user)
-        else:
-            # Utiliser get_queryset() pour respecter les permissions par défaut
-            queryset = self.get_queryset()
+        """Retourne la liste des documents avec filtres appliqués au backend.
         
-        # Appliquer les filtres depuis les query parameters
-        status_filter = request.query_params.get('status')
-        if status_filter:
-            queryset = queryset.filter(status=status_filter)
+        ✅ UTILISE DocumentFilterService au lieu de logique inline.
+        """
+        # Créer le service de filtrage
+        filter_service = DocumentFilterService(request.user)
         
-        document_type = request.query_params.get('document_type')
-        if document_type:
-            queryset = queryset.filter(document_type=document_type)
+        # Construire le dict de filtres depuis query_params
+        filters = {
+            'agent': request.query_params.get('agent'),
+            'status': request.query_params.get('status'),
+            'document_type': request.query_params.get('document_type'),
+            'department_id': request.query_params.get('department_id'),
+            'folder_id': request.query_params.get('folder_id'),
+            'created_after': request.query_params.get('created_after'),
+            'created_before': request.query_params.get('created_before'),
+            'search': request.query_params.get('search'),
+        }
         
-        # Filtrer par département (agent.department)
-        department = request.query_params.get('department')
-        if department:
-            queryset = queryset.filter(agent__department=department)
-        
-        # Filtrer par dates
-        created_after = request.query_params.get('created_after')
-        if created_after:
-            queryset = queryset.filter(created_at__gte=created_after)
-        
-        created_before = request.query_params.get('created_before')
-        if created_before:
-            queryset = queryset.filter(created_at__lte=created_before)
-        
-        # Filtrer par texte (search)
-        search = request.query_params.get('search')
-        if search:
-            from django.db.models import Q
-            queryset = queryset.filter(
-                Q(title__icontains=search) |
-                Q(description__icontains=search) |
-                Q(agent__matricule__icontains=search)
-            )
+        # Appliquer les filtres via le service
+        queryset = filter_service.get_filtered_documents(filters)
         
         # Trier les résultats
         queryset = queryset.order_by('-created_at')
@@ -1137,22 +1098,62 @@ class DocumentShareViewSet(viewsets.ModelViewSet):
     
     @action(detail=False, methods=['get'])
     def shared_with_me(self, request):
-        """Obtenir les documents partagés avec moi."""
+        """Obtenir les documents partagés avec moi (user ou folder)."""
         DocumentShare = apps.get_model('documents', 'DocumentShare')
         from apps.users.serializers import DocumentShareSerializer
         
-        shares = DocumentShare.objects.filter(
-            shared_with=request.user,
+        user = request.user
+        
+        # 1. Documents partagés directement avec l'utilisateur
+        user_shares = DocumentShare.objects.filter(
+            shared_with=user,
             expires_at__isnull=True
         ) | DocumentShare.objects.filter(
-            shared_with=request.user,
+            shared_with=user,
             expires_at__gt=timezone.now()
         )
-        shares = shares.order_by('-shared_at')
         
-        serializer = DocumentShareSerializer(shares, many=True)
+        # 2. Documents partagés avec les dossiers auxquels l'utilisateur appartient
+        # Récupérer les dossiers de l'utilisateur
+        from apps.folders.models import Folder
+        user_folders = set()
+        
+        # Ajouter la branche (filiale)
+        if user.branch:
+            user_folders.add(user.branch.id)
+            # Ajouter aussi le parent (pôle) si c'est une filiale
+            if user.branch.parent:
+                user_folders.add(user.branch.parent.id)
+        
+        # Ajouter le département (service)
+        if user.department:
+            user_folders.add(user.department.id)
+            # Ajouter aussi le parent (filiale) si c'est un service
+            if user.department.parent:
+                user_folders.add(user.department.parent.id)
+                # Ajouter le pôle (grand-parent)
+                if user.department.parent.parent:
+                    user_folders.add(user.department.parent.parent.id)
+        
+        # Ajouter le pôle si spécifié
+        if user.pole:
+            user_folders.add(user.pole.id)
+        
+        folder_shares = DocumentShare.objects.filter(
+            shared_with_folder_id__in=user_folders,
+            expires_at__isnull=True
+        ) | DocumentShare.objects.filter(
+            shared_with_folder_id__in=user_folders,
+            expires_at__gt=timezone.now()
+        )
+        
+        # Combiner et dédupliquer
+        all_shares = user_shares | folder_shares
+        all_shares = all_shares.distinct().order_by('-shared_at')
+        
+        serializer = DocumentShareSerializer(all_shares, many=True)
         return Response({
-            'count': shares.count(),
+            'count': all_shares.count(),
             'results': serializer.data
         })
     
@@ -1172,15 +1173,56 @@ class DocumentShareViewSet(viewsets.ModelViewSet):
             'results': serializer.data
         })
     
+    @action(detail=False, methods=['get'])
+    def available_recipients(self, request):
+        """Obtenir les utilisateurs et dossiers disponibles pour partage."""
+        from apps.users.models import User
+        from apps.folders.models import Folder
+        from apps.users.serializers import UserListSerializer
+        from apps.folders.serializers import FolderSerializer
+        
+        # Tous les utilisateurs
+        users = User.objects.filter(is_active=True).exclude(id=request.user.id)
+        user_serializer = UserListSerializer(users, many=True)
+        
+        # Tous les dossiers (Pôles, Filiales, Services)
+        folders = Folder.objects.filter(folder_type__in=['pole', 'filiale', 'service'])
+        folder_serializer = FolderSerializer(folders, many=True)
+        
+        return Response({
+            'users': user_serializer.data,
+            'users_count': users.count(),
+            'folders': folder_serializer.data,
+            'folders_count': folders.count(),
+        })
+    
     @action(detail=True, methods=['post'])
     def mark_accessed(self, request, pk=None):
         """Marquer un document comme accédé."""
         from django.utils import timezone
+        from apps.folders.models import Folder
         
         share = self.get_object()
+        user = request.user
         
-        # Vérifier que c'est le destinataire
-        if share.shared_with != request.user:
+        # Vérifier que c'est le destinataire (user ou folder)
+        is_recipient = False
+        
+        # Cas 1: partage direct avec l'utilisateur
+        if share.shared_with == user:
+            is_recipient = True
+        
+        # Cas 2: partage avec dossier auquel l'utilisateur appartient
+        if share.shared_with_folder:
+            if (user.branch and user.branch.id == share.shared_with_folder.id) or \
+               (user.department and user.department.id == share.shared_with_folder.id) or \
+               (user.pole and user.pole.id == share.shared_with_folder.id) or \
+               (user.branch and user.branch.parent and user.branch.parent.id == share.shared_with_folder.id) or \
+               (user.department and user.department.parent and user.department.parent.id == share.shared_with_folder.id) or \
+               (user.department and user.department.parent and user.department.parent.parent and user.department.parent.parent.id == share.shared_with_folder.id):
+                is_recipient = True
+        
+        if not is_recipient:
             return Response(
                 {'detail': 'You can only mark your own shares as accessed'},
                 status=status.HTTP_403_FORBIDDEN

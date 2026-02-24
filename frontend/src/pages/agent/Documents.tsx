@@ -2,16 +2,18 @@ import React, { useState, useEffect } from 'react'
 import {
   FileText, Search, Eye, Download,
   AlertCircle, CheckCircle2, Loader,
-  Plus, LayoutGrid, List, X, Share
+  Plus, LayoutGrid, List, X, Share, Send
 } from 'lucide-react'
 import { Layout } from '@/components/common'
 import { DocumentUpload } from '@/components/agent/DocumentUpload'
 import { DocumentsHeader } from '@/components/documents/DocumentsHeader'
 import { DocumentRerouteModal } from '@/components/documents'
+import { ShareDocumentModal } from '@/components/documents/ShareDocumentModal'
 import { FolderTree } from '@/components/documents/FolderTree'
 import { FileViewer } from '@/components/documents/FileViewer'
 import { apiClient } from '@/services/api'
 import { useAuth } from '@/contexts/AuthContext'
+import { isAdmin } from '@/utils/authUtils'
 
 interface Document {
   id: string
@@ -74,8 +76,11 @@ export const AgentDocuments: React.FC = () => {
   const [viewingDocumentId, setViewingDocumentId] = useState<string | null>(null)
   const [isRerouteModalOpen, setIsRerouteModalOpen] = useState(false)
   const [selectedDocumentForReroute, setSelectedDocumentForReroute] = useState<Document | null>(null)
+  const [isShareModalOpen, setIsShareModalOpen] = useState(false)
+  const [selectedDocumentForShare, setSelectedDocumentForShare] = useState<Document | null>(null)
 
-  const isAdmin = user?.is_staff || user?.role === 'ADMIN'
+  // ✅ UTILISE authUtils.isAdmin() - single source of truth
+  const isAdminUser = isAdmin(user)
 
   // Fetch documents on mount
   useEffect(() => {
@@ -96,7 +101,7 @@ export const AgentDocuments: React.FC = () => {
       setError(null)
       
       // For admins, fetch all documents; for others, fetch only their own
-      const endpoint = isAdmin ? '/documents/' : `/documents/?created_by=${user?.id}`
+      const endpoint = isAdminUser ? '/documents/' : `/documents/?created_by=${user?.id}`
       const response = await apiClient.get(endpoint)
       const data = Array.isArray(response.data) 
         ? response.data 
@@ -159,7 +164,7 @@ export const AgentDocuments: React.FC = () => {
     // For admins: filter by folder navigation OR filter dropdown
     // Use folder_path (full hierarchy) for filtering, not just folder name
     const docFolder = (doc as any).folder_path || doc.folder
-    const matchesFolder = isAdmin && currentPath.length > 0
+    const matchesFolder = isAdminUser && currentPath.length > 0
       ? docFolder === currentPath[currentPath.length - 1]
       : selectedFolder === 'Tous' || docFolder === selectedFolder
     
@@ -211,7 +216,7 @@ export const AgentDocuments: React.FC = () => {
 
 
           {/* Folder Navigation Breadcrumb - Admin Only */}
-          {isAdmin && (
+          {isAdminUser && (
             <div className="mb-6 p-4 bg-white/10 border border-white/20 rounded-lg backdrop-blur-sm">
               <p className="text-xs font-semibold text-secondary-500 uppercase mb-2">Arborescence</p>
               <div className="flex items-center gap-2 text-sm flex-wrap">
@@ -289,7 +294,7 @@ export const AgentDocuments: React.FC = () => {
                     </select>
 
                     {/* Creator Filter - Only for Admins */}
-                    {isAdmin && (
+                    {isAdminUser && (
                       <select 
                         value={selectedCreator}
                         onChange={(e) => setSelectedCreator(e.target.value)}
@@ -438,7 +443,7 @@ export const AgentDocuments: React.FC = () => {
                                 </td>
 
                                 {/* Actions */}
-                                <td className="px-4 py-3.5 text-center w-16 relative">
+                                <td className="px-4 py-3.5 text-center relative">
                                   <div className="flex items-center justify-center gap-1">
                                     <button
                                       onClick={() => setViewingDocumentId(doc.id)}
@@ -456,14 +461,26 @@ export const AgentDocuments: React.FC = () => {
                                     </button>
                                     <button
                                       onClick={() => {
-                                        setSelectedDocumentForReroute(doc)
-                                        setIsRerouteModalOpen(true)
+                                        setSelectedDocumentForShare(doc)
+                                        setIsShareModalOpen(true)
                                       }}
-                                      className="p-1.5 hover:bg-purple-100 rounded-lg transition-all duration-200 text-gray-700 hover:text-purple-600"
-                                      title="Re-router"
+                                      className="p-1.5 hover:bg-orange-100 rounded-lg transition-all duration-200 text-gray-700 hover:text-orange-600"
+                                      title="Partager"
                                     >
-                                      <Share size={16} />
+                                      <Send size={16} />
                                     </button>
+                                    {isAdminUser && (
+                                      <button
+                                        onClick={() => {
+                                          setSelectedDocumentForReroute(doc)
+                                          setIsRerouteModalOpen(true)
+                                        }}
+                                        className="p-1.5 hover:bg-purple-100 rounded-lg transition-all duration-200 text-gray-700 hover:text-purple-600"
+                                        title="Re-router"
+                                      >
+                                        <Share size={16} />
+                                      </button>
+                                    )}
                                   </div>
                                 </td>
                               </tr>
@@ -557,6 +574,22 @@ export const AgentDocuments: React.FC = () => {
               </div>
             </div>
           </div>
+        )}
+
+        {/* Share Document Modal */}
+        {isShareModalOpen && selectedDocumentForShare && (
+          <ShareDocumentModal
+            isOpen={isShareModalOpen}
+            documentId={selectedDocumentForShare.id}
+            documentTitle={selectedDocumentForShare.name}
+            onClose={() => {
+              setIsShareModalOpen(false)
+              setSelectedDocumentForShare(null)
+            }}
+            onSuccess={() => {
+              setSuccessMessage('Document partagé avec succès!')
+            }}
+          />
         )}
 
         {/* Re-routing Modal */}

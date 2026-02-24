@@ -6,7 +6,7 @@ import { ToastProvider } from '@/contexts/ToastContext'
 import * as Pages from '@/pages'
 
 // ─── Types ──────────────────────────────────────────────────────
-type UserRole = 'AGENT' | 'ADMIN'
+type UserRole = 'AGENT' | 'ADMIN' | 'POLE_MANAGER' | 'FILIALE_MANAGER' | 'SERVICE_MANAGER' | 'DOCUMENT_MANAGER'
 
 interface RouteConfig {
   path: string
@@ -67,34 +67,34 @@ const agentRoutes: RouteConfig[] = [
   { 
     path: '/dashboard', 
     element: Pages.AgentDashboard, 
-    allowedRoles: ['AGENT', 'ADMIN'],
+    allowedRoles: ['AGENT', 'ADMIN', 'POLE_MANAGER', 'FILIALE_MANAGER', 'SERVICE_MANAGER', 'DOCUMENT_MANAGER'],
     label: 'Tableau de Bord',
     icon: '📊'
   },
   { 
     path: '/documents', 
     element: Pages.AgentDocuments, 
-    allowedRoles: ['AGENT', 'ADMIN'],
+    allowedRoles: ['AGENT', 'ADMIN', 'POLE_MANAGER', 'FILIALE_MANAGER', 'SERVICE_MANAGER', 'DOCUMENT_MANAGER'],
     label: 'Documents',
     icon: '📄'
   },
   { 
     path: '/documents/:id', 
     element: Pages.DocumentDetail, 
-    allowedRoles: ['AGENT', 'ADMIN'],
+    allowedRoles: ['AGENT', 'ADMIN', 'POLE_MANAGER', 'FILIALE_MANAGER', 'SERVICE_MANAGER', 'DOCUMENT_MANAGER'],
     label: 'Détail Document'
   },
   { 
     path: '/notifications', 
     element: Pages.Notifications, 
-    allowedRoles: ['AGENT', 'ADMIN'],
+    allowedRoles: ['AGENT', 'ADMIN', 'POLE_MANAGER', 'FILIALE_MANAGER', 'SERVICE_MANAGER', 'DOCUMENT_MANAGER'],
     label: 'Notifications',
     icon: '🔔'
   },
   { 
     path: '/tasks', 
     element: Pages.Tasks, 
-    allowedRoles: ['AGENT', 'ADMIN'],
+    allowedRoles: ['AGENT', 'ADMIN', 'POLE_MANAGER', 'FILIALE_MANAGER', 'SERVICE_MANAGER', 'DOCUMENT_MANAGER'],
     label: 'Tâches',
     icon: '✓'
   },

@@ -5,7 +5,7 @@ from django.db import models
 from django.contrib.auth import get_user_model
 from django.core.validators import FileExtensionValidator
 from django.utils.translation import gettext_lazy as _
-from apps.users.models import Department
+from apps.folders.models import Folder
 
 User = get_user_model()
 
@@ -70,13 +70,14 @@ class DocumentTemplate(models.Model):
         verbose_name=_('Visibilité')
     )
     
-    # Department-based sharing
+    # Department-based sharing (refactored to Folder(type='service'))
     departments = models.ManyToManyField(
-        'users.Department',
+        'folders.Folder',
         blank=True,
         related_name='templates',
-        verbose_name=_('Départements autorisés'),
-        help_text=_('Laissez vide pour rendre disponible à tous les départements')
+        verbose_name=_('Services/Départements autorisés'),
+        help_text=_('Services (type=service) autorisés. Laissez vide pour tous les services'),
+        limit_choices_to={'folder_type': 'service'}
     )
     
     # User-level sharing (for CUSTOM visibility)

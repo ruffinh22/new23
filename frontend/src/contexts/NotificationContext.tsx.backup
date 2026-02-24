@@ -1,0 +1,231 @@
+import React, { createContext, useContext, useState, useCallback, useEffect } from 'react'
+import { Notification } from '@/services/notificationService'
+import { wsService } from '@/services/websocketService'
+import { notificationService } from '@/services/notificationService'
+import { STORAGE_KEYS } from '@/utils/constants'
+
+interface NotificationContextType {
+  notifications: Notification[]
+  unreadCount: number
+  addNotification: (notification: Notification) => void
+  removeNotification: (id: number) => void
+  markAsRead: (id: number) => void
+  markAllAsRead: () => void
+  loadNotifications: () => Promise<void>
+  isLoading: boolean
+  isConnected: boolean
+}
+
+const NotificationContext = createContext<NotificationContextType | undefined>(undefined)
+
+// Inner Provider that can use hooks
+const NotificationProviderInner: React.FC<{ children: React.ReactNode }> = ({ children }) => {
+  const [notifications, setNotifications] = useState<Notification[]>([])
+  const [isLoading, setIsLoading] = useState(false)
+  const [isConnected, setIsConnected] = useState(false)
+
+  // Fonction de tri immuable
+  const sortNotifications = useCallback((notifs: Notification[]): Notification[] => {
+    return [...notifs].sort((a, b) => {
+      const timeA = new Date(a.created_at).getTime()
+      const timeB = new Date(b.created_at).getTime()
+      return timeB - timeA
+    })
+  }, [])
+
+  const loadNotifications = useCallback(async () => {
+    try {
+      setIsLoading(true)
+      // Load 100 latest notifications on initial app load (both read and unread)
+      const data = await notificationService.getNotifications({ limit: 100 })
+      if (Array.isArray(data.results)) {
+        const sorted = sortNotifications(data.results)
+        setNotifications(sorted)
+        const unread = sorted.filter(n => !n.is_read).length
+        console.log(`📊 Loaded ${sorted.length} notifications (${unread} unread)`)
+      } else {
+        console.error('❌ getNotifications returned non-array:', data)
+        setNotifications([])
+      }
+    } catch (error) {
+      console.error('❌ Error loading notifications:', error)
+      setNotifications([])
+    } finally {
+      setIsLoading(false)
+    }
+  }, [sortNotifications])
+
+  useEffect(() => {
+    let isActive = true
+    let retryTimeout: NodeJS.Timeout | null = null
+
+    const initializeNotifications = () => {
+      const token = localStorage.getItem(STORAGE_KEYS.accessToken)
+
+      if (!token) {
+        // Token not yet available - wait a bit for AuthContext to initialize
+        if (retryTimeout) clearTimeout(retryTimeout)
+        retryTimeout = setTimeout(() => {
+          if (isActive) {
+            initializeNotifications()
+          }
+        }, 100)
+        return
+      }
+
+      console.log('🚀 NotificationContext initialized - loading notifications...')
+    
+    // Load initial notifications from API AND connect WebSocket in parallel
+    Promise.all([
+      loadNotifications(),
+      wsService.connect(token).then(() => {
+        if (isActive) {
+          setIsConnected(true)
+          console.log('✅ WebSocket connected for real-time notifications')
+        }
+      }).catch((error) => {
+        console.error('❌ WebSocket connection error:', error)
+        if (isActive) setIsConnected(false)
+      })
+    ]).catch(err => {
+      console.error('Error in initialization:', err)
+    })
+
+    // Handler: Initial sync (all notifications - both read and unread)
+    const handleInitialSync = (data: any) => {
+      if (isActive) {
+        const notifs = data.notifications || []
+        if (Array.isArray(notifs)) {
+          // 📌 Keep ALL notifications (read and unread) so notifications page shows everything
+          if (notifs.length > 0) {
+            const sorted = sortNotifications(notifs)
+            setNotifications(sorted)
+            const unread = sorted.filter((n: any) => !n.is_read).length
+            console.log(`📥 Initial sync: received ${sorted.length} notifications (${unread} unread)`)
+          } else {
+            console.log(`📥 Initial sync: no notifications`)
+            setNotifications([])
+          }
+        } else {
+          console.warn(`⚠️  Initial sync: received non-array notifications:`, data)
+        }
+      }
+    }
+
+    // Handler: New notification created
+    const handleNotificationNew = (data: any) => {
+      if (isActive && data.notification) {
+        const notif = data.notification
+        
+        setNotifications((prev) => {
+          // Deduplication: check if already exists
+          if (prev.find(n => n.id === notif.id)) {
+            console.debug(`ℹ️  Notification ${notif.id} already in list (skipped)`)
+            return prev
+          }
+          const updated = sortNotifications([notif, ...prev])
+          
+          // Limit to 100 latest notifications in memory
+          const limited = updated.slice(0, 100)
+          
+          console.log(`✨ New notification: ${notif.title} (ID: ${notif.id})`)
+          
+          return limited
+        })
+      }
+    }
+
+    // Handler: Notification status updated (e.g., marked as read)
+    const handleNotificationUpdated = (data: any) => {
+      if (isActive && data.notification) {
+        setNotifications((prev) => {
+          // � Update notification WITHOUT removing it (keep ALL notifications)
+          const updated = prev.map((n) =>
+            n.id === data.notification.id ? data.notification : n
+          )
+          console.log(`✏️  Notification ${data.notification.id} updated (read: ${data.notification.is_read})`)
+          return sortNotifications(updated)
+        })
+      }
+    }
+
+    // Register WebSocket event handlers - must match backend event types!
+    wsService.on('initial_notifications', handleInitialSync)
+    wsService.on('notification', handleNotificationNew)  // <-- Backend sends 'notification'
+    wsService.on('notification_updated', handleNotificationUpdated)
+
+    // Cleanup on unmount
+    return () => {
+      isActive = false
+      wsService.off('initial_notifications', handleInitialSync)
+      wsService.off('notification', handleNotificationNew)
+      wsService.off('notification_updated', handleNotificationUpdated)
+      wsService.disconnect()
+      setIsConnected(false)
+    }
+  }, [])
+
+  const addNotification = useCallback((notification: Notification) => {
+    setNotifications((prev) => sortNotifications([notification, ...prev]))
+  }, [])
+
+  const removeNotification = useCallback((id: number) => {
+    // Don't delete, just mark as read or remove from unread
+    setNotifications((prev) => prev.filter((n) => n.id !== id))
+  }, [])
+
+  const markAsRead = useCallback((id: number) => {
+    // Send to WebSocket
+    wsService.markAsRead(id)
+    
+    // Update local state
+    setNotifications((prev) =>
+      prev.map((n) =>
+        n.id === id ? { ...n, is_read: true, read_at: new Date().toISOString() } : n
+      )
+    )
+  }, [])
+
+  const markAllAsRead = useCallback(() => {
+    setNotifications((prev) =>
+      prev.map((n) => ({
+        ...n,
+        is_read: true,
+        read_at: new Date().toISOString(),
+      }))
+    )
+  }, [])
+
+  const unreadCount = notifications.filter((n) => !n.is_read).length
+
+  return (
+    <NotificationContext.Provider
+      value={{
+        notifications,
+        unreadCount,
+        addNotification,
+        removeNotification,
+        markAsRead,
+        markAllAsRead,
+        loadNotifications,
+        isLoading,
+        isConnected,
+      }}
+    >
+      {children}
+    </NotificationContext.Provider>
+  )
+}
+
+// Outer provider that wraps the inner - allows hooks to work
+export const NotificationProvider: React.FC<{ children: React.ReactNode }> = ({ children }) => {
+  return <NotificationProviderInner>{children}</NotificationProviderInner>
+}
+
+export const useNotifications = () => {
+  const context = useContext(NotificationContext)
+  if (context === undefined) {
+    throw new Error('useNotifications must be used within a NotificationProvider')
+  }
+  return context
+}

@@ -3,6 +3,7 @@ from rest_framework.decorators import action
 from rest_framework.response import Response
 from django_filters.rest_framework import DjangoFilterBackend
 
+from apps.common.mixins import PermissionMixin
 from .models import Folder
 from .serializers import (
     FolderSerializer,
@@ -18,16 +19,40 @@ class IsFolderAdminOrReadOnly(permissions.BasePermission):
     """Permission pour les administrateurs ou lecture seule."""
     
     def has_permission(self, request, view):
+        # SAFE_METHODS (GET) → toujours autorisé pour les utilisateurs authentifiés
         if request.method in permissions.SAFE_METHODS:
+            return request.user and request.user.is_authenticated
+        
+        # Pour POST, PUT, DELETE: vérifier si l'utilisateur est ADMIN
+        # ✅ UTILISE le rôle ADMIN du système, pas is_staff
+        if not request.user:
+            return False
+        
+        # Vérifier le rôle ADMIN (nouveau système)
+        if getattr(request.user, 'role', None) == 'ADMIN':
             return True
-        return request.user and request.user.is_staff
+        
+        # Fallback au is_staff (ancienne vérification)
+        return request.user.is_staff
 
 
-class FolderViewSet(viewsets.ModelViewSet):
-    """ViewSet pour gérer les dossiers."""
+class FolderViewSet(PermissionMixin, viewsets.ModelViewSet):
+    """ViewSet pour gérer les dossiers.
+    
+    ✅ UTILISE PermissionMixin pour centralized admin checks.
+    """
     
     queryset = Folder.objects.filter(is_active=True)
-    permission_classes = [permissions.IsAuthenticated, IsFolderAdminOrReadOnly]
+    
+    def get_permissions(self):
+        """Retourne les permissions selon l'action."""
+        # Pour les actions read-only (list, retrieve, etc), autoriser les utilisateurs authentifiés
+        if self.action in ['list', 'retrieve', 'tree', 'root', 'children']:
+            return [permissions.IsAuthenticated()]
+        
+        # Pour les actions write (create, update, destroy), faire une vérification custom
+        # Utiliser notre permission personnalisée
+        return [permissions.IsAuthenticated(), IsFolderAdminOrReadOnly()]
     
     def get_serializer_class(self):
         """Retourne le sérialiseur approprié selon l'action."""
@@ -42,12 +67,15 @@ class FolderViewSet(viewsets.ModelViewSet):
         serializer.save(created_by=self.request.user)
     
     def get_queryset(self):
-        """Retourne les dossiers filtrés selon les permissions."""
+        """Retourne les dossiers filtrés selon les permissions.
+        
+        ✅ UTILISE self.is_admin() pour centralized check.
+        """
         queryset = Folder.objects.filter(is_active=True)
         user = self.request.user
         
-        # Les admins voient tous les dossiers
-        if user.is_staff or getattr(user, 'role', None) == 'ADMIN':
+        # ✅ UTILISE PermissionMixin.is_admin() - single source of truth
+        if self.is_admin(user):
             return queryset
         
         # Les agents ne voient que:
@@ -55,31 +83,27 @@ class FolderViewSet(viewsets.ModelViewSet):
         # 2. Leur département sous leur filiale
         # 3. L'archive de leur filiale
         if hasattr(user, 'branch') and user.branch:
+            # user.branch EST directement un Folder de type 'filiale'
             branch = user.branch
             
             # Dossiers autorisés:
-            # - Dossier racine de la branche
+            # - Dossier de la branche
             # - Dossier du département de l'agent (sous sa branche)
-            # - Dossier Archive (sous sa branche)
-            authorized_folders = []
+            # - Autres dossiers sous sa branche
+            authorized_folders = [branch.id]
             
-            if branch.folder:  # Dossier racine de la filiale
-                authorized_folders.append(branch.folder.id)
-                
-                # Tous les enfants directs de la branche (Archive + Depts)
+            # Tous les enfants directs de la branche (Archive + Depts)
+            authorized_folders.extend(
+                list(branch.children.values_list('id', flat=True))
+            )
+            
+            # Si l'agent a un département, ajouter les sous-dossiers du département
+            if hasattr(user, 'department') and user.department:
+                # user.department EST directement un Folder de type 'service'
+                dept_folder = user.department
                 authorized_folders.extend(
-                    list(branch.folder.children.values_list('id', flat=True))
+                    list(dept_folder.get_descendants_ids())
                 )
-                
-                # Si l'agent a un département, ajouter les sous-dossiers du département
-                if hasattr(user, 'department') and user.department:
-                    dept_folder = branch.folder.children.filter(
-                        name=str(user.department)
-                    ).first()
-                    if dept_folder:
-                        authorized_folders.extend(
-                            list(dept_folder.get_descendants_ids())
-                        )
             
             queryset = queryset.filter(id__in=authorized_folders)
         
@@ -98,14 +122,16 @@ class FolderViewSet(viewsets.ModelViewSet):
             # Les admins voient toutes les filiales + tous les depts
             root_folders = Folder.objects.filter(parent__isnull=True, is_active=True).order_by('name')
         else:
-            # Les agents ne voient que leur filiale
-            if hasattr(request.user, 'branch') and request.user.branch and request.user.branch.folder:
+            # Les agents ne voient que leur filiale (branch est directement un Folder, pas un objet avec .folder)
+            if hasattr(request.user, 'branch') and request.user.branch:
+                # request.user.branch EST directement un Folder de type 'filiale'
                 root_folders = Folder.objects.filter(
-                    id=request.user.branch.folder.id,
+                    id=request.user.branch.id,
                     is_active=True
                 )
             else:
-                root_folders = Folder.objects.none()
+                # Si pas de branch assigné, montrer tous les dossiers
+                root_folders = Folder.objects.filter(parent__isnull=True, is_active=True).order_by('name')
         
         serializer = FolderTreeSerializer(root_folders, many=True, context={'request': request})
         return Response(serializer.data)

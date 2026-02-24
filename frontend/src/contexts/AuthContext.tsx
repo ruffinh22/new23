@@ -41,6 +41,7 @@ interface AuthContextType {
   login: (matricule: string, password: string) => Promise<void>
   register: (data: RegisterRequest) => Promise<void>
   logout: () => void
+  refreshUser: () => void
   isLoading: boolean
 }
 
@@ -104,14 +105,13 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
         access_level: decodedToken.access_level,
         pole_id: decodedToken.pole_id,
         pole_name: decodedToken.pole_name,
-        filiale_id: decodedToken.filiale_id,
-        filiale_name: decodedToken.filiale_name,
+        branch_id: decodedToken.branch_id,
+        branch_name: decodedToken.branch_name,
         service_id: decodedToken.service_id,
         service_name: decodedToken.service_name,
         department: decodedToken.department,
         department_name: decodedToken.department_name || null,
         branch: decodedToken.branch || null,
-        branch_name: decodedToken.branch_name || null,
         phone: decodedToken.phone || '',
         avatar: decodedToken.avatar || null,
         is_staff: decodedToken.is_staff || false,
@@ -185,6 +185,8 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
         access_level: decodedToken.access_level,
         pole_id: decodedToken.pole_id,
         pole_name: decodedToken.pole_name,
+        branch_id: decodedToken.branch_id,
+        branch_name: decodedToken.branch_name,
         filiale_id: decodedToken.filiale_id,
         filiale_name: decodedToken.filiale_name,
         service_id: decodedToken.service_id,
@@ -192,7 +194,6 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
         department: decodedToken.department,
         department_name: decodedToken.department_name || null,
         branch: decodedToken.branch || null,
-        branch_name: decodedToken.branch_name || null,
         phone: decodedToken.phone || '',
         avatar: decodedToken.avatar || null,
         is_staff: decodedToken.is_staff || false,
@@ -224,8 +225,64 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     delete apiClient.defaults.headers.common['Authorization']
   }
 
+  const refreshUser = React.useCallback(async () => {
+    try {
+      console.log('[AuthContext] Refreshing user from API...')
+      
+      // Call the /me endpoint to get fresh user data from the API
+      const response = await apiClient.get('/auth/users/me/')
+      const userData = response.data as User
+      
+      // If the API returns more detailed fields, make sure they're set
+      if (!userData.pole_name && userData.pole) {
+        console.log('[AuthContext] Pole ID found but no name, setting from decoded token')
+      }
+
+      console.log('[AuthContext] User data refreshed from API:', userData.matricule)
+      setUser(userData)
+      localStorage.setItem(STORAGE_KEYS.user, JSON.stringify(userData))
+    } catch (error) {
+      console.error('[AuthContext] Failed to refresh user from API:', error)
+      // Fallback: try to update from JWT token
+      const token = localStorage.getItem(STORAGE_KEYS.accessToken)
+      if (token) {
+        try {
+          const decodedToken = decodeToken(token)
+          if (decodedToken) {
+            const userData: User = {
+              id: decodedToken.user_id || decodedToken.sub,
+              matricule: decodedToken.matricule,
+              email: decodedToken.email,
+              first_name: decodedToken.first_name || '',
+              last_name: decodedToken.last_name || '',
+              role: (decodedToken.role || 'AGENT').toUpperCase() as any,
+              access_level: decodedToken.access_level,
+              pole_id: decodedToken.pole_id,
+              pole_name: decodedToken.pole_name,
+              branch_id: decodedToken.branch_id,
+              branch_name: decodedToken.branch_name,
+              service_id: decodedToken.service_id,
+              service_name: decodedToken.service_name,
+              department: decodedToken.department,
+              department_name: decodedToken.department_name || null,
+              branch: decodedToken.branch || null,
+              phone: decodedToken.phone || '',
+              avatar: decodedToken.avatar || null,
+              is_staff: decodedToken.is_staff || false,
+              is_superuser: decodedToken.is_superuser || false,
+            }
+            setUser(userData)
+            localStorage.setItem(STORAGE_KEYS.user, JSON.stringify(userData))
+          }
+        } catch (decodeError) {
+          console.error('[AuthContext] Failed to decode token fallback:', decodeError)
+        }
+      }
+    }
+  }, [])
+
   return (
-    <AuthContext.Provider value={{ user, isAuthenticated: !!user, login, register, logout, isLoading }}>
+    <AuthContext.Provider value={{ user, isAuthenticated: !!user, login, register, logout, refreshUser, isLoading }}>
       {children}
     </AuthContext.Provider>
   )

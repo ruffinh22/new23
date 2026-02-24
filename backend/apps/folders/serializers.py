@@ -3,24 +3,36 @@ from .models import Folder
 
 
 class FolderSerializer(serializers.ModelSerializer):
-    """Sérialiseur principal pour le modèle Folder unifié.
+    """✅ Sérialiseur UNIFIÉ pour tous les types de Folder.
     
-    Expose tous les types d'objet organisationnel (Filiale, Département, Section).
+    Consolidé: Remplace FolderBranchSerializer, FolderPoleSerializer, FolderServiceSerializer.
+    Ajoute dynamiquement les champs pertinents selon le type (pole, filiale, service, sub_service).
+    
+    Validation:
+    - folder_type: doit être pole|filiale|service|sub_service
+    - name: 2-255 caractères
     """
     
     parent_name = serializers.CharField(source='parent.name', read_only=True, allow_null=True)
+    parent_type = serializers.CharField(source='parent.folder_type', read_only=True, allow_null=True)
     full_path = serializers.CharField(source='get_full_path', read_only=True)
     level = serializers.IntegerField(source='get_level', read_only=True)
     auto_type = serializers.CharField(read_only=True)
     created_by_name = serializers.CharField(source='created_by.get_full_name', read_only=True, allow_null=True)
     children_count = serializers.SerializerMethodField()
     
+    # Champs dynamiques selon le type
+    filiales_count = serializers.SerializerMethodField()
+    services_count = serializers.SerializerMethodField()
+    sous_services_count = serializers.SerializerMethodField()
+    
     class Meta:
         model = Folder
         fields = [
             'id', 'name', 'folder_type', 'code', 'country_code',
-            'parent', 'parent_name', 'description',
+            'parent', 'parent_name', 'parent_type', 'description',
             'full_path', 'level', 'auto_type', 'children_count',
+            'filiales_count', 'services_count', 'sous_services_count',
             'is_active', 'created_by', 'created_by_name', 'created_at', 'updated_at'
         ]
         read_only_fields = ['id', 'full_path', 'level', 'auto_type', 'created_by', 'created_at', 'updated_at']
@@ -29,64 +41,69 @@ class FolderSerializer(serializers.ModelSerializer):
             'country_code': {'required': False, 'allow_null': True},
         }
     
+    def validate_folder_type(self, value):
+        """Valide que folder_type est une valeur acceptée."""
+        valid_types = ['pole', 'filiale', 'service', 'sub_service']
+        if value not in valid_types:
+            raise serializers.ValidationError(
+                f"Invalid folder_type. Must be one of: {valid_types}"
+            )
+        return value
+    
+    def validate_name(self, value):
+        """Valide que name a 2-255 caractères."""
+        if len(value) < 2 or len(value) > 255:
+            raise serializers.ValidationError(
+                "Name must be between 2 and 255 characters"
+            )
+        return value
+    
     def get_children_count(self, obj):
-        return obj.children.count()
-
-
-class FolderBranchSerializer(FolderSerializer):
-    """Sérialiseur pour les Folders de type 'filiale' (Filiales).
+        """Nombre total d'enfants directs."""
+        return obj.children.filter(is_active=True).count()
     
-    ANCIEN: 'branch', NOUVEAU: 'filiale'
-    """
-    
-    services_count = serializers.SerializerMethodField()
-    
-    class Meta(FolderSerializer.Meta):
-        fields = FolderSerializer.Meta.fields + ['services_count']
+    def get_filiales_count(self, obj):
+        """Filiales (pour poles): retourne le nombre, None sinon."""
+        if obj.folder_type == 'pole':
+            return obj.children.filter(folder_type='filiale', is_active=True).count()
+        return None
     
     def get_services_count(self, obj):
-        """Compte les services directs sous cette filiale."""
-        return obj.children.filter(folder_type='service').count()
+        """Services (pour filiales): retourne le nombre, None sinon."""
+        if obj.folder_type == 'filiale':
+            return obj.children.filter(folder_type='service', is_active=True).count()
+        return None
+    
+    def get_sous_services_count(self, obj):
+        """Sous-services (pour services): retourne le nombre, None sinon."""
+        if obj.folder_type == 'service':
+            return obj.children.filter(folder_type='sub_service', is_active=True).count()
+        return None
+
+
+# ✅ ALIASES BACKWARD COMPATIBILITY (deprecated, utiliser FolderSerializer)
+class FolderBranchSerializer(FolderSerializer):
+    """⚠️ DEPRECATED alias - Utiliser FolderSerializer.
+    Garde pour compatibilité rétroactive (type='filiale')."""
+    pass
 
 
 class FolderPoleSerializer(FolderSerializer):
-    """Sérialiseur pour les Folders de type 'pole' (Pôles)."""
-    
-    filiales_count = serializers.SerializerMethodField()
-    
-    class Meta(FolderSerializer.Meta):
-        fields = FolderSerializer.Meta.fields + ['filiales_count']
-    
-    def get_filiales_count(self, obj):
-        """Compte les filiales sous ce pôle."""
-        return obj.children.filter(folder_type='filiale').count()
-
-
-class FolderDepartmentSerializer(FolderSerializer):
-    """Sérialiseur pour les Folders de type 'service' (Services/Départements).
-    
-    ANCIEN: 'department', NOUVEAU: 'service'
-    """
-    
-    parent_type = serializers.CharField(source='parent.folder_type', read_only=True, allow_null=True)
-    parent_code = serializers.CharField(source='parent.code', read_only=True, allow_null=True)
-    
-    class Meta(FolderSerializer.Meta):
-        fields = FolderSerializer.Meta.fields + ['parent_type', 'parent_code']
+    """⚠️ DEPRECATED alias - Utiliser FolderSerializer.
+    Garde pour compatibilité rétroactive (type='pole')."""
+    pass
 
 
 class FolderServiceSerializer(FolderSerializer):
-    """Sérialiseur pour les Folders de type 'service' (Services/Départements)."""
-    
-    parent_type = serializers.CharField(source='parent.folder_type', read_only=True, allow_null=True)
-    sous_services_count = serializers.SerializerMethodField()
-    
-    class Meta(FolderSerializer.Meta):
-        fields = FolderSerializer.Meta.fields + ['parent_type', 'sous_services_count']
-    
-    def get_sous_services_count(self, obj):
-        """Compte les sous-services directes sous ce service."""
-        return obj.children.filter(folder_type='sub_service').count()
+    """⚠️ DEPRECATED alias - Utiliser FolderSerializer.
+    Garde pour compatibilité rétroactive (type='service')."""
+    pass
+
+
+class FolderDepartmentSerializer(FolderSerializer):
+    """⚠️ DEPRECATED alias - Utiliser FolderSerializer.
+    Garde pour compatibilité rétroactive (ancien nom 'department')."""
+    pass
 
 
 class FolderDetailSerializer(FolderSerializer):
@@ -134,4 +151,5 @@ class FolderCreateSerializer(serializers.ModelSerializer):
         extra_kwargs = {
             'code': {'required': False, 'allow_null': True},
             'country_code': {'required': False, 'allow_null': True},
+            'parent': {'required': False, 'allow_null': True},
         }

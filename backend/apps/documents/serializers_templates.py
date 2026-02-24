@@ -3,13 +3,14 @@ Serializers for Document Template API
 """
 from rest_framework import serializers
 from apps.documents.models import DocumentTemplate, TemplateVersion, TemplateDownloadLog
-from apps.users.models import Department, User
+from apps.folders.models import Folder
+from apps.users.models import User
 
 
 class DepartmentSimpleSerializer(serializers.ModelSerializer):
-    """Simple department info for templates"""
+    """Simple service/department info for templates (uses Folder model now)"""
     class Meta:
-        model = Department
+        model = Folder
         fields = ['id', 'name', 'code']
 
 

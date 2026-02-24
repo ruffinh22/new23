@@ -28,10 +28,14 @@ class WebSocketService {
   private isIntentionallyClosed = false
 
   constructor() {
-    // Use relative path so browser automatically uses correct protocol and nginx proxy
-    // If page is HTTPS, browser will use wss:// automatically
-    // If page is HTTP, browser will use ws:// automatically
-    this.url = `/ws/notifications/`
+    // Connect to backend WebSocket (port 8000), not frontend (port 5174)
+    // Build correct URL: ws://localhost:8000/ws/notifications/
+    const protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:'
+    const host = window.location.hostname
+    const wsHost = `${host}:8000`  // Backend is on port 8000
+    this.url = `${protocol}//${wsHost}/ws/notifications/`
+    
+    console.log(`[WebSocketService] Connecting to: ${this.url}`)
   }
 
   /**

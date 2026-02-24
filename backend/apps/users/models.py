@@ -10,95 +10,10 @@ from django.db import models
 from django.utils import timezone
 
 
-class BranchManager(models.Manager):
-    """Manager pour le modèle Branch."""
-    
-    def get_choices(self):
-        """Retourne les choix de filiale."""
-        return [(branch.id, branch.name) for branch in self.filter(is_active=True)]
-
-
-class Branch(models.Model):
-    """Modèle pour les filiales (pays) de l'organisation."""
-    
-    name = models.CharField(max_length=100, unique=True)  # Bénin, Congo, etc.
-    code = models.CharField(max_length=20, unique=True)   # BEN, CON, etc.
-    country_code = models.CharField(max_length=2, unique=True)  # Code pays ISO (BJ, CG, CI, etc.)
-    description = models.TextField(blank=True)
-    folder = models.OneToOneField(
-        'folders.Folder',
-        on_delete=models.SET_NULL,
-        null=True,
-        blank=True,
-        related_name='branch'
-    )
-    
-    # Status
-    is_active = models.BooleanField(default=True)
-    
-    # Timestamps
-    created_at = models.DateTimeField(auto_now_add=True)
-    updated_at = models.DateTimeField(auto_now=True)
-    
-    objects = BranchManager()
-    
-    class Meta:
-        db_table = 'branches'
-        verbose_name = 'Filiale'
-        verbose_name_plural = 'Filiales'
-        ordering = ['name']
-    
-    def __str__(self):
-        return f"{self.name} ({self.code})"
-
-
-class DepartmentManager(models.Manager):
-    """Manager pour le modèle Department."""
-    
-    def get_choices(self):
-        """Retourne les choix de département."""
-        return [(dept.id, dept.name) for dept in self.filter(is_active=True)]
-
-
-class Department(models.Model):
-    """Modèle pour les départements au sein d'une filiale."""
-    
-    branch = models.ForeignKey(
-        Branch,
-        on_delete=models.CASCADE,
-        null=True,
-        blank=True,
-        related_name='departments'
-    )
-    name = models.CharField(max_length=100)
-    code = models.CharField(max_length=20)
-    description = models.TextField(blank=True)
-    folder = models.OneToOneField(
-        'folders.Folder',
-        on_delete=models.SET_NULL,
-        null=True,
-        blank=True,
-        related_name='department'
-    )
-    
-    # Status
-    is_active = models.BooleanField(default=True)
-    
-    # Timestamps
-    created_at = models.DateTimeField(auto_now_add=True)
-    updated_at = models.DateTimeField(auto_now=True)
-    
-    objects = DepartmentManager()
-    
-    class Meta:
-        db_table = 'departments'
-        verbose_name = 'Département'
-        verbose_name_plural = 'Départements'
-        unique_together = [['branch', 'code']]  # Code unique par branche
-        ordering = ['branch', 'name']
-    
-    def __str__(self):
-        return f"{self.name} ({self.code})"
+# ✅ LEGACY MODELS REMOVED: Branch et Department
+# → Remplacés par Folder(folder_type='filiale') et Folder(folder_type='service')
+# → User.branch pointe maintenant vers Folder(type='filiale')
+# → User.department pointe maintenant vers Folder(type='service')
 
 
 class UserManager(BaseUserManager):

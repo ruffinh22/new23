@@ -111,8 +111,8 @@ export const AddUserModal: React.FC<AddUserModalProps> = ({ isOpen, onClose, onS
 
       // Convert pole and branche to integers
       if (data.pole) submitData.pole = parseInt(data.pole)
-      if (data.branche) submitData.branche = parseInt(data.branche)
-      if (data.departement) submitData.departement = parseInt(data.departement)
+      if (data.branche) submitData.branch = parseInt(data.branche)
+      if (data.departement) submitData.department = parseInt(data.departement)
 
       await apiClient.post(USER_ENDPOINTS.list, submitData)
 

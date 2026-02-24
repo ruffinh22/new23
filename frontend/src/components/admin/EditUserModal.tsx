@@ -22,9 +22,9 @@ const editUserSchema = z.object({
   email: z.string().email('Invalid email'),
   password: z.string().optional(),
   role: z.enum(['ADMIN', 'POLE_MANAGER', 'FILIALE_MANAGER', 'SERVICE_MANAGER', 'DOCUMENT_MANAGER', 'AGENT']),
-  pole: z.string().min(1, 'Pôle required'),
-  branche: z.string().min(1, 'Filiale required'),
-  departement: z.string().optional(),
+  pole: z.string().optional().nullable(), // Rendre optionnel pour ADMIN
+  branche: z.string().optional().nullable(), // Rendre optionnel pour ADMIN
+  service: z.string().optional().nullable(),
   is_active: z.boolean().optional(),
 })
 
@@ -56,6 +56,8 @@ export const EditUserModal: React.FC<EditUserModalProps> = ({ isOpen, user, onCl
     const loadPoles = async () => {
       try {
         const polesData = await folderService.getPoles()
+        // Trier alphabétiquement
+        polesData.sort((a: any, b: any) => a.name.localeCompare(b.name))
         setPoles(polesData)
       } catch (err) {
         console.error('Error loading poles:', err)
@@ -73,6 +75,8 @@ export const EditUserModal: React.FC<EditUserModalProps> = ({ isOpen, user, onCl
     const loadFiliales = async () => {
       try {
         const filialesData = await folderService.getFiliales(poleValue)
+        // Trier alphabétiquement
+        filialesData.sort((a: any, b: any) => a.name.localeCompare(b.name))
         setFiliales(filialesData)
       } catch (err) {
         console.error('Error loading filiales:', err)
@@ -90,6 +94,8 @@ export const EditUserModal: React.FC<EditUserModalProps> = ({ isOpen, user, onCl
     const loadServices = async () => {
       try {
         const servicesData = await folderService.getServices(brancheValue)
+        // Trier alphabétiquement
+        servicesData.sort((a: any, b: any) => a.name.localeCompare(b.name))
         setServices(servicesData)
       } catch (err) {
         console.error('Error loading services:', err)
@@ -110,7 +116,7 @@ export const EditUserModal: React.FC<EditUserModalProps> = ({ isOpen, user, onCl
         role: user.role || 'AGENT',
         pole: user.pole ? String(user.pole) : '',
         branche: user.branch ? String(user.branch) : '',
-        departement: user.department ? String(user.department) : '',
+        service: user.department ? String(user.department) : '',
         is_active: user.is_active,
       })
     }
@@ -133,10 +139,24 @@ export const EditUserModal: React.FC<EditUserModalProps> = ({ isOpen, user, onCl
         is_active: data.is_active,
       }
 
-      // Add hierarchy fields
-      if (data.pole) updateData.pole = parseInt(data.pole)
-      if (data.branche) updateData.branche = parseInt(data.branche)
-      if (data.departement) updateData.departement = parseInt(data.departement)
+      // Handle hierarchy fields - all roles can have hierarchies assigned
+      if (data.pole && data.pole !== '') {
+        updateData.pole = parseInt(data.pole)
+      } else {
+        updateData.pole = null
+      }
+
+      if (data.branche && data.branche !== '') {
+        updateData.branch = parseInt(data.branche)
+      } else {
+        updateData.branch = null
+      }
+
+      if (data.service && data.service !== '') {
+        updateData.department = parseInt(data.service)
+      } else {
+        updateData.department = null
+      }
 
       // Only include password if provided
       if (data.password && data.password.length >= 8) {
@@ -211,6 +231,9 @@ export const EditUserModal: React.FC<EditUserModalProps> = ({ isOpen, user, onCl
           />
 
           <div className="space-y-4 border-t pt-4">
+            <div className="mb-4 p-3 bg-blue-50 border border-blue-300 rounded text-sm text-blue-800">
+              💡 <strong>Hiérarchie requise:</strong> Pour tous les rôles (sauf ADMIN qui peut n'avoir aucune assignation), assignez au minimum un Pôle et une Filiale. Le Service est optionnel.
+            </div>
             <div>
               <label htmlFor="role" className="block text-sm font-medium text-gray-700 mb-2">
                 Rôle de l'utilisateur
@@ -234,7 +257,7 @@ export const EditUserModal: React.FC<EditUserModalProps> = ({ isOpen, user, onCl
 
             <div>
               <label htmlFor="pole" className="block text-sm font-medium text-gray-700 mb-2">
-                Pôle <span className="text-red-600">*</span>
+                Pôle (Optionnel)
               </label>
               <select
                 id="pole"
@@ -256,7 +279,7 @@ export const EditUserModal: React.FC<EditUserModalProps> = ({ isOpen, user, onCl
             {poleValue && (
               <div>
                 <label htmlFor="branche" className="block text-sm font-medium text-gray-700 mb-2">
-                  Filiale <span className="text-red-600">*</span>
+                  Filiale (Optionnel)
                 </label>
                 <select
                   id="branche"
@@ -278,18 +301,18 @@ export const EditUserModal: React.FC<EditUserModalProps> = ({ isOpen, user, onCl
 
             {brancheValue && (
               <div>
-                <label htmlFor="departement" className="block text-sm font-medium text-gray-700 mb-2">
+                <label htmlFor="service" className="block text-sm font-medium text-gray-700 mb-2">
                   Service (Optionnel)
                 </label>
                 <select
-                  id="departement"
-                  {...register('departement')}
+                  id="service"
+                  {...register('service')}
                   className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-red-500"
                 >
                   <option value="">-- Sélectionner un Service --</option>
-                  {services.map((service: any) => (
-                    <option key={service.id} value={service.id}>
-                      {service.name}
+                  {services.map((svc: any) => (
+                    <option key={svc.id} value={svc.id}>
+                      {svc.name}
                     </option>
                   ))}
                 </select>

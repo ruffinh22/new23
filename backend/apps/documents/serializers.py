@@ -4,6 +4,7 @@ Sérialiseurs pour les documents avec validation.
 
 from rest_framework import serializers
 from django.core.exceptions import ValidationError
+from apps.common.validators import DocumentValidator
 from .models import Document, DocumentSpecification, DocumentValidationResult, DocumentTransfer
 from .file_upload_validator import FileTypeValidator
 
@@ -73,6 +74,7 @@ class DocumentListSerializer(serializers.ModelSerializer):
     specification_display = serializers.SerializerMethodField()
     classification = serializers.SerializerMethodField()
     validation_status = serializers.SerializerMethodField()
+    file_format = serializers.SerializerMethodField()
     
     class Meta:
         model = Document
@@ -101,6 +103,10 @@ class DocumentListSerializer(serializers.ModelSerializer):
             'updated_at',
         ]
     
+    def get_file_format(self, obj):
+        """Retourne le format du fichier extraits dynamiquement."""
+        return obj.get_file_format()
+    
     def get_specification_display(self, obj):
         """Retourne le nom d'affichage de la spécification."""
         if obj.specification and obj.specification.display_name:
@@ -108,18 +114,16 @@ class DocumentListSerializer(serializers.ModelSerializer):
         return None
     
     def get_folder_path(self, obj):
-        """Retourne le chemin complet du dossier (hiérarchie)."""
+        """Retourne le chemin complet du dossier (hiérarchie).
+        
+        ✅ OPTIMISÉ: Utilise folder.get_full_path() qui a protection MAX_DEPTH
+        Évite de réitérer la hiérarchie complètement pour chaque document.
+        """
         if not obj.folder:
             return None
         
-        # Build path from root to leaf
-        path_parts = []
-        current_folder = obj.folder
-        while current_folder:
-            path_parts.insert(0, current_folder.name)
-            current_folder = current_folder.parent
-        
-        return ' / '.join(path_parts) if path_parts else None
+        # Utiliser la méthode du modèle Folder (déjà optimisée avec MAX_DEPTH=50)
+        return obj.folder.get_full_path()
     
     def get_classification(self, obj):
         """Retourne la classification du document (folder ou specification)."""
@@ -195,18 +199,16 @@ class DocumentDetailSerializer(serializers.ModelSerializer):
         ]
     
     def get_folder_path(self, obj):
-        """Retourne le chemin complet du dossier (hiérarchie)."""
+        """Retourne le chemin complet du dossier (hiérarchie).
+        
+        ✅ OPTIMISÉ: Utilise folder.get_full_path() qui a protection MAX_DEPTH
+        Évite de réitérer la hiérarchie complètement pour chaque document.
+        """
         if not obj.folder:
             return None
         
-        # Build path from root to leaf
-        path_parts = []
-        current_folder = obj.folder
-        while current_folder:
-            path_parts.insert(0, current_folder.name)
-            current_folder = current_folder.parent
-        
-        return ' / '.join(path_parts) if path_parts else None
+        # Utiliser la méthode du modèle Folder (déjà optimisée avec MAX_DEPTH=50)
+        return obj.folder.get_full_path()
     
     def get_file_url(self, obj):
         """Retourne l'URL du fichier si disponible."""
@@ -217,13 +219,18 @@ class DocumentDetailSerializer(serializers.ModelSerializer):
 
 
 class DocumentCreateSerializer(serializers.ModelSerializer):
-    """Sérialiseur pour la création de documents avec validation automatique."""
+    """Sérialiseur pour la création de documents avec validation automatique.
+    
+    ✅ UTILISE DocumentValidator pour validation explicite du JSON.
+    """
     
     validation_details = serializers.SerializerMethodField(read_only=True)
     validation_errors = serializers.SerializerMethodField(read_only=True)
     validation_warnings = serializers.SerializerMethodField(read_only=True)
     validation_status = serializers.SerializerMethodField(read_only=True)
     file_type_validation = serializers.SerializerMethodField(read_only=True)
+    folder_id = serializers.IntegerField(required=False, allow_null=True, write_only=True)
+    agent_id = serializers.IntegerField(required=False, allow_null=True, write_only=True)
     
     class Meta:
         model = Document
@@ -233,6 +240,8 @@ class DocumentCreateSerializer(serializers.ModelSerializer):
             'file',
             'document_type',
             'description',
+            'folder_id',
+            'agent_id',
             'status',
             'validation_status',
             'validation_errors',
@@ -241,6 +250,27 @@ class DocumentCreateSerializer(serializers.ModelSerializer):
             'file_type_validation',
         ]
         read_only_fields = ['id', 'status', 'validation_status', 'validation_errors', 'validation_warnings', 'validation_details', 'file_type_validation']
+    
+    def validate(self, data):
+        """Valide les données de création avec DocumentValidator.
+        
+        ✅ UTILISE DocumentValidator.validate_document_create() pour validation centralisée.
+        """
+        # Préparer les données pour la validation
+        validation_data = {
+            'title': data.get('title'),
+            'document_type': data.get('document_type'),
+            'description': data.get('description'),
+            'file': data.get('file'),
+        }
+        
+        # Utiliser le validator pour validation explicite
+        try:
+            DocumentValidator.validate_document_create(validation_data)
+        except ValidationError as e:
+            raise serializers.ValidationError(str(e))
+        
+        return data
     
     def validate_file(self, value):
         """Valide le fichier selon la configuration des types de fichiers."""
@@ -262,10 +292,12 @@ class DocumentCreateSerializer(serializers.ModelSerializer):
         return value
     
     def create(self, validated_data):
-        """Crée le document avec validation automatique."""
+        """Crée le document avec validation automatique et assigne le dossier optionnel."""
         from .services import DocumentService
+        from apps.folders.models import Folder
         
         file_obj = validated_data['file']
+        folder_id = validated_data.pop('folder_id', None)  # Extraire folder_id du frontend
         
         # Récupérer le résultat de validation de fichier s'il existe
         file_type_validation = None
@@ -278,8 +310,12 @@ class DocumentCreateSerializer(serializers.ModelSerializer):
             document_type=validated_data['document_type'],
             agent=self.context['request'].user,
             description=validated_data.get('description', ''),
+            folder_id=folder_id,
             auto_validate=True
         )
+        
+        # ✅ Le folder_id est maintenant respecté via DocumentService
+        # Plus besoin de le changer après création
         
         # Stocker les détails de validation pour le sérializer
         if validation_result:

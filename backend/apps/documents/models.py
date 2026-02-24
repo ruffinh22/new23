@@ -594,9 +594,9 @@ class DocumentTransfer(models.Model):
 
 class DocumentShare(models.Model):
     """
-    Modèle pour partager des documents entre utilisateurs.
-    Permet à n'importe quel utilisateur d'envoyer un document à un autre utilisateur,
-    indépendamment de leurs rôles ou hiérarchies.
+    Modèle pour partager des documents:
+    - Entre utilisateurs individuels (shared_with)
+    - Avec des groupes/dossiers (shared_with_folder: Pôle, Filiale ou Service)
     """
     
     PERMISSION_CHOICES = [
@@ -605,6 +605,11 @@ class DocumentShare(models.Model):
         ('DOWNLOAD', 'Téléchargement'),
         ('EDIT', 'Édition'),
         ('SHARE', 'Can re-share'),
+    ]
+    
+    SHARE_TYPE_CHOICES = [
+        ('USER', 'Utilisateur'),
+        ('FOLDER', 'Dossier (Pôle/Filiale/Service)'),
     ]
     
     document = models.ForeignKey(
@@ -621,11 +626,32 @@ class DocumentShare(models.Model):
         help_text="Utilisateur qui partage le document"
     )
     
+    # Type de partage
+    share_type = models.CharField(
+        max_length=20,
+        choices=SHARE_TYPE_CHOICES,
+        default='USER',
+        help_text="Partage avec un utilisateur ou un dossier"
+    )
+    
+    # Partage avec utilisateur (optionnel if share_type='FOLDER')
     shared_with = models.ForeignKey(
         settings.AUTH_USER_MODEL,
         on_delete=models.CASCADE,
         related_name='documents_shared_with_me',
-        help_text="Utilisateur qui reçoit le document"
+        help_text="Utilisateur qui reçoit le document",
+        null=True,
+        blank=True
+    )
+    
+    # Partage avec dossier (optionnel if share_type='USER')
+    shared_with_folder = models.ForeignKey(
+        'folders.Folder',
+        on_delete=models.CASCADE,
+        related_name='documents_shared_with_folder',
+        help_text="Pôle, Filiale ou Service avec qui partager le document",
+        null=True,
+        blank=True
     )
     
     permission = models.CharField(
@@ -659,15 +685,19 @@ class DocumentShare(models.Model):
         verbose_name = 'Partage de document'
         verbose_name_plural = 'Partages de documents'
         ordering = ['-shared_at']
-        unique_together = [['document', 'shared_by', 'shared_with']]
         indexes = [
             models.Index(fields=['shared_with', '-shared_at']),
             models.Index(fields=['shared_by']),
             models.Index(fields=['document']),
+            models.Index(fields=['shared_with_folder', '-shared_at']),
+            models.Index(fields=['share_type']),
         ]
     
     def __str__(self):
-        return f"{self.document.name} shared with {self.shared_with.matricule}"
+        if self.share_type == 'USER':
+            return f"{self.document.title} shared with {self.shared_with.matricule}"
+        else:
+            return f"{self.document.title} shared with {self.shared_with_folder.name} ({self.shared_with_folder.folder_type})"
     
     def is_valid(self):
         """Vérifie si le partage est toujours valide."""

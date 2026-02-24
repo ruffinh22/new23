@@ -14,23 +14,19 @@ logger = logging.getLogger(__name__)
 @receiver(post_save, sender=Document)
 def create_department_folders_on_upload(sender, instance, created, **kwargs):
     """
-    ✅ CORRECTION TOTALE : Crée automatiquement les dossiers de département et de type lors de l'upload.
+    🚫 DÉSACTIVÉ: Le nouveau système 'organize_with_hierarchy' gère déjà:
+    - Créer les dossiers Service/Type automatiquement
+    - Respecter la hiérarchie Pôle > Filiale > Service > Type
     
-    🔒 SÉCURITÉ MAXIMALE : Validation stricte pour EMPÊCHER les dossiers orphelins à la racine.
+    Ce signal était une ancienne implémentation et interfère avec le nouveau système.
     
-    Structure attendue: Branche (root) → Département → Type de document
-    
-    Étapes:
-    1. Valider que l'agent a une branche ET un département
-    2. Valider que la branche a un dossier racine (parent=None)
-    3. Créer/récupérer le dossier département SOUS la branche
-    4. Créer/récupérer le sous-dossier type SOUS le département
-    5. Assigner le document au sous-dossier final
+    ✅ NOUVEAU SYSTÈME:
+    - DocumentService.organize_with_hierarchy() → crée la structure complète
+    - Le document est déjà assigné au bon dossier lors de create()
+    - Les signaux post_save ne doivent pas modifier le folder
     """
-    
-    # ⚠️ Ne s'exécute QUE pour les nouveaux documents
-    if not created:
-        return
+    # ✅ Ne rien faire - la structure est déjà correcte grâce à organize_with_hierarchy()
+    return  # EXIT FUNCTION - don't execute old code below
     
     # ⚠️ L'agent et son département sont OBLIGATOIRES
     if not instance.agent or not instance.agent.department:
@@ -148,14 +144,19 @@ def create_department_folders_on_upload(sender, instance, created, **kwargs):
             sub_folder.save(update_fields=['parent'])
         
         # ==================== ÉTAPE 5: ASSIGNATION AU DOCUMENT ====================
+        # 
+        # ⚠️ IMPORTANT: SI LE DOCUMENT A UN FOLDER, C'ÉTAIT ASSIGNÉ VIA folder_id DU FRONTEND
+        # ⚠️ NE PAS OVERRIDER - LaisseR le frontend décider de la structure!
+        # Le signal crée les dossiers département/type MAIS n'assigne JAMAIS le document
+        # si un folder a déjà été défini via organize_with_hierarchy()
         
         if not instance.folder:
             instance.folder = sub_folder
             instance.save(update_fields=['folder'])
-            logger.info(f"✅ Document {instance.id} assigné au dossier {sub_folder.id}")
+            logger.info(f"✅ Document {instance.id} assigné au dossier {sub_folder.id} (fallback signal)")
             logger.info(f"✅ Chemin complet: {branch_folder.name} → {dept_folder.name} → {sub_folder.name}")
         else:
-            logger.info(f"ℹ️ Document {instance.id} a déjà un dossier assigné: {instance.folder.id}")
+            logger.info(f"✅ Document {instance.id} a déjà un dossier assigné: {instance.folder.id} (respecté du frontend)")
         
         logger.info(f"✅ SUCCÈS: Document {instance.id} traité avec succès")
         
@@ -331,21 +332,21 @@ def create_folders_on_document_type_added(sender, instance, created, **kwargs):
     
     try:
         from apps.routing_rules.models import DepartmentDocumentType
-        from apps.users.models import Department
+        from apps.folders.models import Folder
         
         if sender != DepartmentDocumentType:
             return
         
-        logger.info(f"🔄 Signal: Nouveau type de document ajouté: {instance.department} - {instance.document_type}")
+        # instance.department pointe vers Folder(type='service') maintenant
+        logger.info(f"🔄 Signal: Nouveau type de document ajouté: {instance.document_type}")
         
-        # Récupérer le département
-        department = Department.objects.filter(name=instance.department).first()
-        if not department or not department.folder:
-            logger.warning(f"⚠️ Département '{instance.department}' sans dossier associé")
+        # DepartmentDocumentType.target_folder pointe directement vers Folder
+        target_folder = instance.target_folder
+        if not target_folder:
+            logger.warning(f"⚠️ DepartmentDocumentType sans target_folder associé")
             return
         
-        dept_folder = department.folder
-        logger.info(f"📁 Dossier département: {dept_folder.id} ({dept_folder.name})")
+        logger.info(f"📁 Dossier cible: {target_folder.id} ({target_folder.name})")
         
         # Déterminer le nom du sous-dossier
         type_choices = dict(Document.DOCUMENT_TYPE_CHOICES)
@@ -356,7 +357,7 @@ def create_folders_on_document_type_added(sender, instance, created, **kwargs):
         # Créer ou récupérer le sous-dossier
         sub_folder, created_sub = Folder.objects.get_or_create(
             name=subfolder_name,
-            parent=dept_folder,
+            parent=target_folder,
             defaults={
                 'description': f'Dossier pour les documents de type {subfolder_name}',
                 'is_active': True

@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useCallback } from 'react'
+import React, { useState, useEffect, useCallback, useRef } from 'react'
 import {
   FileText, Search, Filter, Download, Eye, MoreVertical,
   Loader, User, FolderOpen, LayoutGrid, List, ArrowUpDown, File
@@ -46,8 +46,12 @@ interface Filters {
   dateTo: string
 }
 
-// Les statuts et types de documents sont chargés dynamiquement depuis l'API
-// via statusService et documentTypeService
+// État de filtre dossier : on regroupe path + children ensemble
+// pour éviter deux setState successifs qui déclenchent deux fetchDocuments
+interface FolderFilter {
+  path: string
+  children: string[]
+}
 
 export const DocumentsManagement: React.FC = () => {
   const [documents, setDocuments] = useState<Document[]>([])
@@ -57,19 +61,24 @@ export const DocumentsManagement: React.FC = () => {
   const [sortField, setSortField] = useState<SortField>('created_at')
   const [sortOrder, setSortOrder] = useState<SortOrder>('desc')
   const [selectedDocs, setSelectedDocs] = useState<number[]>([])
-  
+
   // Menu Actions pour un document spécifique
   const [actionMenuOpenFor, setActionMenuOpenFor] = useState<number | null>(null)
-  
-  // Sélection du dossier pour filtrer les documents dans la table
-  const [selectedFolderPath, setSelectedFolderPath] = useState<string>('')
-  const [selectedFolderChildren, setSelectedFolderChildren] = useState<string[]>([])
-  
+
+  // ✅ FIX : Un seul état atomique pour le filtre dossier
+  // Au lieu de selectedFolderPath + selectedFolderChildren séparés,
+  // on les met ensemble → une seule mise à jour = un seul re-render = zéro double fetch
+  const [folderFilter, setFolderFilter] = useState<FolderFilter>({ path: '', children: [] })
+
+  // ✅ FIX : Cache de la structure de dossiers en mémoire (ref = pas de re-render)
+  // Évite de rappeler l'API /folder_structure/ à chaque clic sur un dossier
+  const folderStructureCache = useRef<any>(null)
+
   // Données chargées depuis l'API
   const [departments, setDepartments] = useState<Department[]>([])
-  const [statuses, setStatuses] = useState<Array<{value: string, label: string}>>([])
-  const [documentTypes, setDocumentTypes] = useState<Array<{value: string, label: string}>>([])
-  
+  const [statuses, setStatuses] = useState<Array<{ value: string; label: string }>>([])
+  const [documentTypes, setDocumentTypes] = useState<Array<{ value: string; label: string }>>([])
+
   const [filters, setFilters] = useState<Filters>({
     search: '',
     status: '',
@@ -81,19 +90,23 @@ export const DocumentsManagement: React.FC = () => {
   const [showPreview, setShowPreview] = useState<Document | null>(null)
   const [bulkAction, setBulkAction] = useState('')
 
-  // Load static data ONCE on mount (never again)
+  // Charger les données statiques UNE SEULE FOIS au montage
   useEffect(() => {
     loadDepartments()
     loadStatuses()
     loadDocumentTypes()
-  }, []) // Empty deps = mount only
+    // ✅ FIX : Pré-charger la structure des dossiers en cache dès le montage
+    prefetchFolderStructure()
+  }, [])
 
-  // Load documents when filters/sort/folder changes
+  // ✅ FIX : Le useEffect de fetch ne dépend plus que des filtres utilisateur + folderFilter (atomique)
+  // Plus de dépendance sur selectedFolderChildren séparé → plus de double déclenchement
   useEffect(() => {
     fetchDocuments()
-  }, [filters, sortField, sortOrder, selectedFolderPath, selectedFolderChildren])
+  }, [filters, sortField, sortOrder, folderFilter])
 
-  // Charger les départements depuis l'API
+  // ─── Chargement des listes de filtres ──────────────────────────
+
   const loadDepartments = useCallback(async () => {
     try {
       const depts = await departmentService.getDepartmentsWithAll()
@@ -121,7 +134,20 @@ export const DocumentsManagement: React.FC = () => {
     }
   }, [])
 
-  // Helper to collect all descendant folder names recursively
+  // ✅ FIX : Pré-charger la structure de dossiers dans le cache (ref)
+  // Sans provoquer de re-render, sans bloquer l'UI
+  const prefetchFolderStructure = async () => {
+    try {
+      const response = await apiClient.get('/documents/folder_structure/')
+      folderStructureCache.current = response.data
+      console.log('📁 Structure dossiers mise en cache')
+    } catch (err) {
+      console.error('Erreur pré-chargement structure dossiers:', err)
+    }
+  }
+
+  // ─── Helpers structure dossiers ────────────────────────────────
+
   const collectDescendantFolderNames = (folder: any, names: string[] = []): string[] => {
     names.push(folder.name)
     if (folder.children && Array.isArray(folder.children)) {
@@ -134,16 +160,21 @@ export const DocumentsManagement: React.FC = () => {
     return names
   }
 
-  // Find a folder in the tree structure by name and collect its descendants
-  const findFolderAndCollectChildren = async (folderName: string) => {
+  // ✅ FIX : Utilise le cache en mémoire au lieu de rappeler l'API
+  // Si le cache est vide (cas exceptionnel), on le recharge
+  const findFolderAndCollectChildren = async (folderName: string): Promise<string[]> => {
     try {
-      const response = await apiClient.get('/documents/folder_structure/')
-      const rootNode = response.data
+      // Utiliser le cache si disponible
+      let rootNode = folderStructureCache.current
+      if (!rootNode) {
+        console.log('Cache vide, rechargement de la structure...')
+        const response = await apiClient.get('/documents/folder_structure/')
+        rootNode = response.data
+        folderStructureCache.current = rootNode
+      }
 
       const findFolder = (node: any): any => {
-        if (node.name === folderName) {
-          return node
-        }
+        if (node.name === folderName) return node
         if (node.children && Array.isArray(node.children)) {
           for (const child of node.children) {
             const found = findFolder(child)
@@ -156,13 +187,16 @@ export const DocumentsManagement: React.FC = () => {
       const foundFolder = findFolder(rootNode)
       if (foundFolder) {
         const descendantNames = collectDescendantFolderNames(foundFolder)
-        console.log('Descendant folders of', folderName, ':', descendantNames)
-        setSelectedFolderChildren(descendantNames)
+        console.log('Dossiers descendants de', folderName, ':', descendantNames)
+        return descendantNames
       }
     } catch (err) {
-      console.error('Error finding folder descendants:', err)
+      console.error('Erreur recherche dossier:', err)
     }
+    return []
   }
+
+  // ─── Fetch documents ───────────────────────────────────────────
 
   const fetchDocuments = async () => {
     setLoading(true)
@@ -175,81 +209,51 @@ export const DocumentsManagement: React.FC = () => {
       if (filters.dateFrom) params.append('created_after', filters.dateFrom)
       if (filters.dateTo) params.append('created_before', filters.dateTo)
 
-      console.log('Filtres appliqués:', {
-        search: filters.search,
-        status: filters.status,
-        type: filters.type,
-        department: filters.department,
-        dateFrom: filters.dateFrom,
-      })
-
       const queryStr = params.toString()
       const url = `/documents/${queryStr ? '?' + queryStr : ''}`
-      console.log('URL:', url)
+      console.log('URL fetch:', url)
 
       const response = await apiClient.get(url)
       let data = Array.isArray(response.data) ? response.data : response.data.results || []
 
       console.log('Documents reçus du backend:', data.length)
 
-      // Apply all filters client-side to ensure filtering works
+      // Filtres côté client
       if (filters.search) {
-        data = data.filter((doc: any) => 
+        data = data.filter((doc: any) =>
           doc.title.toLowerCase().includes(filters.search.toLowerCase()) ||
           doc.document_type.toLowerCase().includes(filters.search.toLowerCase())
         )
       }
-
-      if (filters.status && filters.status !== '') {
+      if (filters.status) {
         data = data.filter((doc: any) => doc.status === filters.status)
-        console.log('Après filtre status:', data.length)
       }
-
-      if (filters.type && filters.type !== '') {
+      if (filters.type) {
         data = data.filter((doc: any) => doc.document_type === filters.type)
-        console.log('Après filtre type:', data.length)
       }
-
-      if (filters.dateFrom && filters.dateFrom !== '') {
+      if (filters.dateFrom) {
         data = data.filter((doc: any) => new Date(doc.created_at) >= new Date(filters.dateFrom))
-        console.log('Après filtre dateFrom:', data.length)
       }
-
-      if (filters.dateTo && filters.dateTo !== '') {
+      if (filters.dateTo) {
         data = data.filter((doc: any) => new Date(doc.created_at) <= new Date(filters.dateTo))
-        console.log('Après filtre dateTo:', data.length)
       }
-
-      // Filter by department client-side
-      if (filters.department && filters.department !== '') {
+      if (filters.department) {
         data = data.filter((doc: any) => doc.agent_department === filters.department)
-        console.log('Après filtre département:', data.length)
       }
 
-      // Filter by selected folder (including all descendants)
-      if (selectedFolderPath && selectedFolderPath !== '' && selectedFolderChildren.length > 0) {
-        data = data.filter((doc: any) => selectedFolderChildren.includes(doc.folder_name))
-        console.log('Après filtre dossier sélectionné:', data.length, 'parmi les dossiers:', selectedFolderChildren)
+      // ✅ FIX : Filtre dossier via l'état atomique folderFilter
+      if (folderFilter.path && folderFilter.children.length > 0) {
+        data = data.filter((doc: any) => folderFilter.children.includes(doc.folder_name))
+        console.log('Après filtre dossier:', data.length, '| dossiers:', folderFilter.children)
       }
 
-      // Sort
+      // Tri
       data.sort((a: any, b: any) => {
-        let aVal = a[sortField]
-        let bVal = b[sortField]
-
-        if (aVal === null) aVal = ''
-        if (bVal === null) bVal = ''
-
-        if (typeof aVal === 'string') {
-          aVal = aVal.toLowerCase()
-          bVal = bVal.toLowerCase()
-        }
-
-        if (sortOrder === 'asc') {
-          return aVal > bVal ? 1 : -1
-        } else {
-          return aVal < bVal ? 1 : -1
-        }
+        let aVal = a[sortField] ?? ''
+        let bVal = b[sortField] ?? ''
+        if (typeof aVal === 'string') { aVal = aVal.toLowerCase(); bVal = bVal.toLowerCase() }
+        if (sortOrder === 'asc') return aVal > bVal ? 1 : -1
+        else return aVal < bVal ? 1 : -1
       })
 
       console.log('Documents finaux après filtrage:', data.length)
@@ -263,10 +267,10 @@ export const DocumentsManagement: React.FC = () => {
     }
   }
 
+  // ─── Actions ───────────────────────────────────────────────────
 
   const handleBulkAction = async () => {
     if (!bulkAction || selectedDocs.length === 0) return
-
     setLoading(true)
     try {
       for (const docId of selectedDocs) {
@@ -277,11 +281,22 @@ export const DocumentsManagement: React.FC = () => {
       await fetchDocuments()
       setError('')
     } catch (err: any) {
-      setError('Erreur lors de l\'action en masse')
+      setError("Erreur lors de l'action en masse")
     } finally {
       setLoading(false)
     }
   }
+
+  // ✅ FIX : handleFolderSelect met à jour path + children en une seule opération atomique
+  // → un seul setState → un seul re-render → un seul fetchDocuments → zéro flash
+  const handleFolderSelect = async (folderName: string) => {
+    console.log('Dossier sélectionné pour filtrage:', folderName)
+    const children = await findFolderAndCollectChildren(folderName)
+    // Mise à jour atomique : path ET children ensemble
+    setFolderFilter({ path: folderName, children })
+  }
+
+  // ─── Helpers affichage ────────────────────────────────────────
 
   const getStatusBadge = (status: string) => {
     const colors: Record<string, string> = {
@@ -320,7 +335,8 @@ export const DocumentsManagement: React.FC = () => {
     })
   }
 
-  // Render Grid View
+  // ─── Vues ──────────────────────────────────────────────────────
+
   const renderGridView = () => (
     <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
       {documents.map((doc) => (
@@ -333,11 +349,8 @@ export const DocumentsManagement: React.FC = () => {
                   checked={selectedDocs.includes(doc.id)}
                   onChange={(e) => {
                     e.stopPropagation()
-                    if (e.target.checked) {
-                      setSelectedDocs([...selectedDocs, doc.id])
-                    } else {
-                      setSelectedDocs(selectedDocs.filter(id => id !== doc.id))
-                    }
+                    if (e.target.checked) setSelectedDocs([...selectedDocs, doc.id])
+                    else setSelectedDocs(selectedDocs.filter(id => id !== doc.id))
                   }}
                   className="w-5 h-5 cursor-pointer"
                 />
@@ -371,14 +384,12 @@ export const DocumentsManagement: React.FC = () => {
               <Button size="sm" variant="secondary" onClick={() => setShowPreview(doc)}>
                 <Eye size={14} /> Voir
               </Button>
-              <Button 
-                size="sm" 
+              <Button
+                size="sm"
                 variant="secondary"
                 onClick={async () => {
                   try {
-                    const response = await apiClient.get(`/documents/${doc.id}/download/`, {
-                      responseType: 'blob'
-                    })
+                    const response = await apiClient.get(`/documents/${doc.id}/download/`, { responseType: 'blob' })
                     const url = window.URL.createObjectURL(response.data)
                     const link = document.createElement('a')
                     link.href = url
@@ -395,35 +406,25 @@ export const DocumentsManagement: React.FC = () => {
                 <Download size={14} />
               </Button>
             </div>
-            
-            <button 
+
+            <button
               onClick={() => setActionMenuOpenFor(actionMenuOpenFor === doc.id ? null : doc.id)}
               className="text-gray-400 hover:text-primary-600 transition-colors p-2"
             >
               <MoreVertical size={18} />
             </button>
 
-            {/* Menu déroulant Actions */}
             {actionMenuOpenFor === doc.id && (
               <div className="absolute right-0 bottom-full mb-2 w-48 bg-white border border-gray-200 rounded-lg shadow-xl z-50">
                 <button
-                  onClick={() => {
-                    apiClient.patch(`/documents/${doc.id}/`, { status: 'VALIDE' })
-                    fetchDocuments()
-                    setActionMenuOpenFor(null)
-                  }}
+                  onClick={() => { apiClient.patch(`/documents/${doc.id}/`, { status: 'VALIDE' }); fetchDocuments(); setActionMenuOpenFor(null) }}
                   className="w-full text-left px-4 py-2 hover:bg-green-50 flex items-center gap-2 border-b border-gray-100 rounded-t-lg"
                 >
                   <span className="text-lg">✓</span>
                   <span className="text-sm text-green-700 font-medium">Approuver</span>
                 </button>
-                
                 <button
-                  onClick={() => {
-                    apiClient.patch(`/documents/${doc.id}/`, { status: 'REJETE' })
-                    fetchDocuments()
-                    setActionMenuOpenFor(null)
-                  }}
+                  onClick={() => { apiClient.patch(`/documents/${doc.id}/`, { status: 'REJETE' }); fetchDocuments(); setActionMenuOpenFor(null) }}
                   className="w-full text-left px-4 py-2 hover:bg-red-50 flex items-center gap-2 rounded-b-lg"
                 >
                   <span className="text-lg">✕</span>
@@ -437,7 +438,6 @@ export const DocumentsManagement: React.FC = () => {
     </div>
   )
 
-  // Render List View
   const renderListView = () => (
     <div className="space-y-2 bg-white rounded-lg shadow overflow-hidden">
       {documents.map((doc, index) => (
@@ -450,11 +450,8 @@ export const DocumentsManagement: React.FC = () => {
               checked={selectedDocs.includes(doc.id)}
               onChange={(e) => {
                 e.stopPropagation()
-                if (e.target.checked) {
-                  setSelectedDocs([...selectedDocs, doc.id])
-                } else {
-                  setSelectedDocs(selectedDocs.filter(id => id !== doc.id))
-                }
+                if (e.target.checked) setSelectedDocs([...selectedDocs, doc.id])
+                else setSelectedDocs(selectedDocs.filter(id => id !== doc.id))
               }}
               className="w-5 h-5 cursor-pointer"
             />
@@ -469,22 +466,19 @@ export const DocumentsManagement: React.FC = () => {
               {doc.status}
             </span>
             <span className="text-sm text-gray-600">{formatFileSize(doc.file_size)}</span>
-            <button 
+            <button
               onClick={() => setActionMenuOpenFor(actionMenuOpenFor === doc.id ? null : doc.id)}
               className="text-gray-400 hover:text-primary-600 transition-colors"
             >
               <MoreVertical size={18} />
             </button>
 
-            {/* Menu déroulant Actions */}
             {actionMenuOpenFor === doc.id && (
               <div className="absolute right-0 mt-2 w-48 bg-white border border-gray-200 rounded-lg shadow-xl z-50">
                 <button
                   onClick={async () => {
                     try {
-                      const response = await apiClient.get(`/documents/${doc.id}/download/`, {
-                        responseType: 'blob'
-                      })
+                      const response = await apiClient.get(`/documents/${doc.id}/download/`, { responseType: 'blob' })
                       const url = window.URL.createObjectURL(response.data)
                       const link = document.createElement('a')
                       link.href = url
@@ -504,36 +498,22 @@ export const DocumentsManagement: React.FC = () => {
                   <Download size={16} className="text-gray-600" />
                   <span className="text-sm text-gray-700">Télécharger</span>
                 </button>
-                
                 <button
-                  onClick={() => {
-                    setShowPreview(doc)
-                    setActionMenuOpenFor(null)
-                  }}
+                  onClick={() => { setShowPreview(doc); setActionMenuOpenFor(null) }}
                   className="w-full text-left px-4 py-2 hover:bg-gray-100 flex items-center gap-2 border-b border-gray-100"
                 >
                   <Eye size={16} className="text-gray-600" />
                   <span className="text-sm text-gray-700">Voir détails</span>
                 </button>
-                
                 <button
-                  onClick={() => {
-                    apiClient.patch(`/documents/${doc.id}/`, { status: 'VALIDE' })
-                    fetchDocuments()
-                    setActionMenuOpenFor(null)
-                  }}
+                  onClick={() => { apiClient.patch(`/documents/${doc.id}/`, { status: 'VALIDE' }); fetchDocuments(); setActionMenuOpenFor(null) }}
                   className="w-full text-left px-4 py-2 hover:bg-green-50 flex items-center gap-2 border-b border-gray-100"
                 >
                   <span className="text-lg">✓</span>
                   <span className="text-sm text-green-700 font-medium">Approuver</span>
                 </button>
-                
                 <button
-                  onClick={() => {
-                    apiClient.patch(`/documents/${doc.id}/`, { status: 'REJETE' })
-                    fetchDocuments()
-                    setActionMenuOpenFor(null)
-                  }}
+                  onClick={() => { apiClient.patch(`/documents/${doc.id}/`, { status: 'REJETE' }); fetchDocuments(); setActionMenuOpenFor(null) }}
                   className="w-full text-left px-4 py-2 hover:bg-red-50 flex items-center gap-2"
                 >
                   <span className="text-lg">✕</span>
@@ -547,7 +527,6 @@ export const DocumentsManagement: React.FC = () => {
     </div>
   )
 
-  // Render Table View
   const renderTableView = () => (
     <div className="bg-white rounded-xl border border-gray-200/80 overflow-x-auto shadow-elevation-2">
       <table className="w-full text-sm table-fixed">
@@ -568,14 +547,11 @@ export const DocumentsManagement: React.FC = () => {
                 type="checkbox"
                 checked={selectedDocs.length === documents.length && documents.length > 0}
                 onChange={(e) => {
-                  if (e.target.checked) {
-                    setSelectedDocs(documents.map(d => d.id))
-                  } else {
-                    setSelectedDocs([])
-                  }
+                  if (e.target.checked) setSelectedDocs(documents.map(d => d.id))
+                  else setSelectedDocs([])
                 }}
                 className="w-4 h-4 cursor-pointer accent-white rounded"
-                title={selectedDocs.length === documents.length && documents.length > 0 ? "Tout désélectionner" : "Tout sélectionner"}
+                title={selectedDocs.length === documents.length && documents.length > 0 ? 'Tout désélectionner' : 'Tout sélectionner'}
               />
             </th>
             {[
@@ -590,12 +566,8 @@ export const DocumentsManagement: React.FC = () => {
                 key={col.field}
                 className="px-3 py-4 text-left font-bold text-white text-xs uppercase tracking-wider border-r border-red-500 cursor-pointer hover:bg-red-700/50 transition-colors"
                 onClick={() => {
-                  if (sortField === col.field) {
-                    setSortOrder(sortOrder === 'asc' ? 'desc' : 'asc')
-                  } else {
-                    setSortField(col.field)
-                    setSortOrder('asc')
-                  }
+                  if (sortField === col.field) setSortOrder(sortOrder === 'asc' ? 'desc' : 'asc')
+                  else { setSortField(col.field); setSortOrder('asc') }
                 }}
               >
                 <div className="flex items-center gap-2 group">
@@ -609,12 +581,10 @@ export const DocumentsManagement: React.FC = () => {
         </thead>
         <tbody className="divide-y divide-gray-200">
           {documents.map((doc, index) => (
-            <tr 
-              key={doc.id} 
+            <tr
+              key={doc.id}
               className={`transition-colors group ${
-                index % 2 === 0 
-                  ? 'bg-amber-50 hover:bg-gray-200' 
-                  : 'bg-white hover:bg-red-100'
+                index % 2 === 0 ? 'bg-amber-50 hover:bg-gray-200' : 'bg-white hover:bg-red-100'
               }`}
             >
               <td className="px-3 py-3 border-r border-gray-200">
@@ -623,11 +593,8 @@ export const DocumentsManagement: React.FC = () => {
                   checked={selectedDocs.includes(doc.id)}
                   onChange={(e) => {
                     e.stopPropagation()
-                    if (e.target.checked) {
-                      setSelectedDocs([...selectedDocs, doc.id])
-                    } else {
-                      setSelectedDocs(selectedDocs.filter(id => id !== doc.id))
-                    }
+                    if (e.target.checked) setSelectedDocs([...selectedDocs, doc.id])
+                    else setSelectedDocs(selectedDocs.filter(id => id !== doc.id))
                   }}
                   className="w-4 h-4 cursor-pointer accent-primary-600 rounded"
                 />
@@ -651,23 +618,20 @@ export const DocumentsManagement: React.FC = () => {
               <td className="px-3 py-3 border-r border-gray-200 font-medium text-gray-600 text-right">{formatFileSize(doc.file_size)}</td>
               <td className="px-3 py-3 border-r border-gray-200 text-gray-600 text-sm whitespace-nowrap">{formatDate(doc.created_at)}</td>
               <td className="px-3 py-3 text-center relative">
-                <button 
+                <button
                   onClick={() => setActionMenuOpenFor(actionMenuOpenFor === doc.id ? null : doc.id)}
                   className="text-gray-400 hover:text-primary-600 transition-colors p-1 hover:bg-gray-100 rounded mx-auto"
                   title="Actions"
                 >
                   <MoreVertical size={18} />
                 </button>
-                
-                {/* Menu déroulant Actions */}
+
                 {actionMenuOpenFor === doc.id && (
                   <div className="absolute right-0 mt-2 w-48 bg-white border border-gray-200 rounded-lg shadow-xl z-50">
                     <button
                       onClick={async () => {
                         try {
-                          const response = await apiClient.get(`/documents/${doc.id}/download/`, {
-                            responseType: 'blob'
-                          })
+                          const response = await apiClient.get(`/documents/${doc.id}/download/`, { responseType: 'blob' })
                           const url = window.URL.createObjectURL(response.data)
                           const link = document.createElement('a')
                           link.href = url
@@ -687,36 +651,22 @@ export const DocumentsManagement: React.FC = () => {
                       <Download size={16} className="text-gray-600" />
                       <span className="text-sm text-gray-700">Télécharger</span>
                     </button>
-                    
                     <button
-                      onClick={() => {
-                        setShowPreview(doc)
-                        setActionMenuOpenFor(null)
-                      }}
+                      onClick={() => { setShowPreview(doc); setActionMenuOpenFor(null) }}
                       className="w-full text-left px-4 py-2 hover:bg-gray-100 flex items-center gap-2 border-b border-gray-100"
                     >
                       <Eye size={16} className="text-gray-600" />
                       <span className="text-sm text-gray-700">Voir détails</span>
                     </button>
-                    
                     <button
-                      onClick={() => {
-                        apiClient.patch(`/documents/${doc.id}/`, { status: 'VALIDE' })
-                        fetchDocuments()
-                        setActionMenuOpenFor(null)
-                      }}
+                      onClick={() => { apiClient.patch(`/documents/${doc.id}/`, { status: 'VALIDE' }); fetchDocuments(); setActionMenuOpenFor(null) }}
                       className="w-full text-left px-4 py-2 hover:bg-green-50 flex items-center gap-2 border-b border-gray-100"
                     >
                       <span className="text-lg">✓</span>
                       <span className="text-sm text-green-700 font-medium">Approuver</span>
                     </button>
-                    
                     <button
-                      onClick={() => {
-                        apiClient.patch(`/documents/${doc.id}/`, { status: 'REJETE' })
-                        fetchDocuments()
-                        setActionMenuOpenFor(null)
-                      }}
+                      onClick={() => { apiClient.patch(`/documents/${doc.id}/`, { status: 'REJETE' }); fetchDocuments(); setActionMenuOpenFor(null) }}
                       className="w-full text-left px-4 py-2 hover:bg-red-50 flex items-center gap-2"
                     >
                       <span className="text-lg">✕</span>
@@ -732,19 +682,13 @@ export const DocumentsManagement: React.FC = () => {
     </div>
   )
 
-  // Handler pour sélectionner un dossier dans l'explorateur de gauche
-  const handleFolderSelect = (folderPath: string) => {
-    setSelectedFolderPath(folderPath)
-    console.log('Dossier sélectionné pour filtrage:', folderPath)
-    // Find all descendant folders and set them for filtering
-    findFolderAndCollectChildren(folderPath)
-  }
+  // ─── Render ────────────────────────────────────────────────────
 
   return (
     <Layout>
       <div className="max-w-7xl mx-auto py-6 px-4">
         {/* Documents Statistics Header */}
-        <DocumentsHeader 
+        <DocumentsHeader
           title="Centre de Gestion des Documents"
           description="Consultez et gérez tous les documents de votre organisation"
         />
@@ -752,7 +696,7 @@ export const DocumentsManagement: React.FC = () => {
         {/* Error */}
         {error && <Alert type="error" title="Erreur" message={error} onClose={() => setError('')} />}
 
-        {/* Folder Explorer */}
+        {/* Folder Explorer (vue complète avec fichiers inline) */}
         <div className="mb-6">
           <FolderExplorer
             showFilesInline={true}
@@ -783,9 +727,7 @@ export const DocumentsManagement: React.FC = () => {
               className="px-4 py-2 border border-primary-200 rounded-lg bg-white text-gray-900 focus:ring-2 focus:ring-primary-500 focus:border-transparent transition-all cursor-pointer hover:border-primary-300"
             >
               {statuses.map((s) => (
-                <option key={s.value} value={s.value}>
-                  {s.label}
-                </option>
+                <option key={s.value} value={s.value}>{s.label}</option>
               ))}
             </select>
             <select
@@ -794,9 +736,7 @@ export const DocumentsManagement: React.FC = () => {
               className="px-4 py-2 border border-primary-200 rounded-lg bg-white text-gray-900 focus:ring-2 focus:ring-primary-500 focus:border-transparent transition-all cursor-pointer hover:border-primary-300"
             >
               {documentTypes.map((t) => (
-                <option key={t.value} value={t.value}>
-                  {t.label}
-                </option>
+                <option key={t.value} value={t.value}>{t.label}</option>
               ))}
             </select>
             <select
@@ -805,9 +745,7 @@ export const DocumentsManagement: React.FC = () => {
               className="px-4 py-2 border border-primary-200 rounded-lg bg-white text-gray-900 focus:ring-2 focus:ring-primary-500 focus:border-transparent transition-all cursor-pointer hover:border-primary-300"
             >
               {departments.map((d) => (
-                <option key={d.id || d.value} value={d.value}>
-                  {d.label}
-                </option>
+                <option key={d.id || d.value} value={d.value}>{d.label}</option>
               ))}
             </select>
             <input
@@ -816,8 +754,12 @@ export const DocumentsManagement: React.FC = () => {
               onChange={(e) => setFilters({ ...filters, dateFrom: e.target.value })}
               className="px-4 py-2 border border-primary-200 rounded-lg bg-white text-gray-900 focus:ring-2 focus:ring-primary-500 focus:border-transparent transition-all cursor-pointer hover:border-primary-300"
             />
-            <button 
-              onClick={() => setFilters({ search: '', status: '', type: '', department: '', dateFrom: '', dateTo: '' })}
+            <button
+              onClick={() => {
+                setFilters({ search: '', status: '', type: '', department: '', dateFrom: '', dateTo: '' })
+                // ✅ Réinitialiser aussi le filtre dossier
+                setFolderFilter({ path: '', children: [] })
+              }}
               className="px-4 py-2 bg-gradient-to-r from-primary-600 to-accent-600 hover:from-primary-700 hover:to-accent-700 text-white font-medium rounded-lg transition-all shadow-md hover:shadow-lg transform hover:scale-105 active:scale-95"
             >
               Réinitialiser
@@ -827,12 +769,18 @@ export const DocumentsManagement: React.FC = () => {
 
         {/* Documents Section - Two Column Layout */}
         <div className="flex gap-4 mt-6">
-          {/* LEFT COLUMN: Folder Explorer */}
+          {/* LEFT COLUMN: Folder Tree */}
           <div className="w-1/4 bg-white rounded-lg shadow-md border border-gray-200 overflow-y-auto max-h-96">
             <div className="p-4">
               <h3 className="font-bold text-gray-900 mb-4 flex items-center gap-2">
                 <FolderOpen size={18} className="text-primary-600" />
                 Dossiers
+                {/* ✅ Indicateur du dossier actif */}
+                {folderFilter.path && (
+                  <span className="ml-auto text-xs text-primary-600 bg-primary-100 px-2 py-0.5 rounded-full font-medium truncate max-w-[80px]">
+                    {folderFilter.path}
+                  </span>
+                )}
               </h3>
               <FolderExplorer
                 showFilesInline={false}
@@ -868,8 +816,8 @@ export const DocumentsManagement: React.FC = () => {
 
               <div className="flex items-center gap-3">
                 <span className={`text-sm font-bold px-4 py-2 rounded-lg transition-all ${
-                  selectedDocs.length > 0 
-                    ? 'text-primary-900 bg-gradient-to-r from-primary-100 to-accent-100 shadow-sm' 
+                  selectedDocs.length > 0
+                    ? 'text-primary-900 bg-gradient-to-r from-primary-100 to-accent-100 shadow-sm'
                     : 'text-gray-500 bg-gray-100'
                 }`}>
                   {selectedDocs.length} sélectionnés
@@ -889,8 +837,8 @@ export const DocumentsManagement: React.FC = () => {
                   <option value="REJETE">Rejeter</option>
                   <option value="ARCHIVE">Archiver</option>
                 </select>
-                <button 
-                  onClick={handleBulkAction} 
+                <button
+                  onClick={handleBulkAction}
                   disabled={!bulkAction || selectedDocs.length === 0}
                   className={`px-6 py-2 rounded-lg font-medium transition-all transform ${
                     !bulkAction || selectedDocs.length === 0
@@ -925,7 +873,7 @@ export const DocumentsManagement: React.FC = () => {
 
         {/* File Viewer */}
         {showPreview && (
-          <FileViewer 
+          <FileViewer
             documentId={showPreview.id}
             fileName={showPreview.title}
             fileFormat={showPreview.file_format}

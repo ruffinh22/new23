@@ -3,11 +3,12 @@ import { Layout } from '@/components/common'
 import { useAuth } from '@/contexts/AuthContext'
 import { apiClient } from '@/services/api'
 import {
-  User, Mail, Phone, Building, Lock, Save, AlertCircle, CheckCircle
+  User, Mail, Phone, Building, Lock, Save, AlertCircle, CheckCircle, Globe
 } from 'lucide-react'
 
 export const Profile: React.FC = () => {
-  const { user } = useAuth()
+  const auth = useAuth()
+  const { user, refreshUser } = auth
   const [isEditing, setIsEditing] = useState(false)
   const [isSaving, setIsSaving] = useState(false)
   const [error, setError] = useState<string | null>(null)
@@ -18,6 +19,15 @@ export const Profile: React.FC = () => {
     email: '',
     phone: '',
   })
+  const refreshedRef = React.useRef(false)
+
+  useEffect(() => {
+    if (user && !refreshedRef.current) {
+      // Call refreshUser only once when component mounts
+      refreshedRef.current = true
+      refreshUser()
+    }
+  }, [user?.id])
 
   useEffect(() => {
     if (user) {
@@ -54,6 +64,9 @@ export const Profile: React.FC = () => {
       
       setSuccess('✅ Profil mis à jour avec succès!')
       setIsEditing(false)
+      
+      // Refresh user data from token to get updated hierarchy info
+      refreshUser()
       
       setTimeout(() => setSuccess(null), 3000)
     } catch (err: any) {
@@ -192,15 +205,29 @@ export const Profile: React.FC = () => {
                   />
                 </div>
 
-                {/* Département */}
+                {/* Service */}
                 <div>
                   <label className="block text-sm font-bold text-secondary-900 mb-2 flex items-center gap-2">
                     <Building size={16} className="text-red-600" />
-                    Département
+                    Service
                   </label>
                   <input
                     type="text"
                     value={user?.department_name || user?.department || 'Non assigné'}
+                    disabled
+                    className="w-full px-4 py-2 rounded-lg border border-secondary-200 bg-secondary-50 cursor-not-allowed text-secondary-600"
+                  />
+                </div>
+
+                {/* Pôle */}
+                <div>
+                  <label className="block text-sm font-bold text-secondary-900 mb-2 flex items-center gap-2">
+                    <Globe size={16} className="text-red-600" />
+                    Pôle
+                  </label>
+                  <input
+                    type="text"
+                    value={user?.pole_name || 'Non assigné'}
                     disabled
                     className="w-full px-4 py-2 rounded-lg border border-secondary-200 bg-secondary-50 cursor-not-allowed text-secondary-600"
                   />
@@ -268,7 +295,7 @@ export const Profile: React.FC = () => {
             {/* Info Box */}
             <div className="bg-red-50 border-t border-red-200 p-6">
               <p className="text-sm text-red-800">
-                <strong>💡 Info:</strong> Seuls votre prénom, nom, email et téléphone peuvent être modifiés. Votre matricule, département et filiale sont gérés par les administrateurs.
+                <strong>💡 Info:</strong> Seuls votre prénom, nom, email et téléphone peuvent être modifiés. Votre matricule, service et filiale sont gérés par les administrateurs.
               </p>
             </div>
           </div>

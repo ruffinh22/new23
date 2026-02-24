@@ -14,8 +14,14 @@ export interface Folder {
   parent_id?: string | number | null;
   parent?: string | number | null;
   description?: string;
+  folder_type?: 'pole' | 'filiale' | 'service' | 'sub_service' | 'branch' | 'department' | 'section';
+  code?: string;
+  country_code?: string;
   full_path?: string;
+  level?: number;
+  auto_type?: string;
   created_by_id?: string;
+  created_by_name?: string;
   created_at: Date;
   updated_at: Date;
   is_active: boolean;

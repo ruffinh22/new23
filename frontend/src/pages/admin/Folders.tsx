@@ -7,14 +7,24 @@ import { apiClient } from '@/services'
 import { Folder } from '@/types/document'
 
 export const Folders: React.FC = () => {
-  const [folders, setFolders] = useState<Folder[]>([])
   const [folderTree, setFolderTree] = useState<Folder[]>([])
   const [showModal, setShowModal] = useState(false)
   const [editingFolder, setEditingFolder] = useState<Folder | null>(null)
-  const [formData, setFormData] = useState({ name: '', description: '', parentId: '' })
+  const [formData, setFormData] = useState({ name: '', description: '', folderType: 'service', parentId: '' })
   const [expandedFolders, setExpandedFolders] = useState<Set<string>>(new Set())
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
+
+  // Extrait tous les folders en flat list pour les stats
+  const flatFolders = (folders: Folder[]): Folder[] => {
+    return folders.reduce((acc: Folder[], folder: Folder) => {
+      acc.push(folder)
+      if (folder.children && folder.children.length > 0) {
+        acc.push(...flatFolders(folder.children))
+      }
+      return acc
+    }, [])
+  }
 
   // Fetch folders from API
   useEffect(() => {
@@ -24,32 +34,11 @@ export const Folders: React.FC = () => {
   const fetchFolders = async () => {
     try {
       setLoading(true)
-      // Fetch tree structure for proper hierarchy display
+      // Backend retourne déjà une arborescence imbriquée avec 'children'
       const response = await apiClient.get('/folders/folders/tree/')
       const treeData = Array.isArray(response.data) ? response.data : []
       
-      // Flatten the tree to get all folders for storage
-      // Important: Keep parent field to distinguish root vs sub-folders
-      const flattenFolders = (folders: Folder[]): Folder[] => {
-        return folders.reduce((acc: Folder[], folder: Folder) => {
-          // Ensure parent field is set correctly
-          const folderData: Folder = {
-            ...folder,
-            parent: folder.parent || null,
-            children: undefined, // Remove children array
-          }
-          acc.push(folderData)
-          if (folder.children && folder.children.length > 0) {
-            acc.push(...flattenFolders(folder.children))
-          }
-          return acc
-        }, [])
-      }
-      
-      const allFolders = flattenFolders(treeData)
-      setFolders(allFolders)
-      
-      // Store tree structure for display
+      // Garder la structure arborescente telle quelle
       setFolderTree(treeData)
       setError(null)
       
@@ -67,7 +56,21 @@ export const Folders: React.FC = () => {
     }
   }
 
-  const rootFolders = folders.filter((f: Folder) => !f.parent)
+  const rootFolders = folderTree.filter((f: Folder) => !f.parent)
+
+  // Obtenir tous les dossiers aplatis avec leur niveau hiérarchique
+  const getAllFoldersFlat = (folders: Folder[], level: number = 0): Array<{ folder: Folder; level: number }> => {
+    const result: Array<{ folder: Folder; level: number }> = []
+    
+    for (const folder of folders) {
+      result.push({ folder, level })
+      if (folder.children && folder.children.length > 0) {
+        result.push(...getAllFoldersFlat(folder.children, level + 1))
+      }
+    }
+    
+    return result
+  }
 
   const toggleFolder = (folderId: string) => {
     setExpandedFolders(prev => {
@@ -81,19 +84,64 @@ export const Folders: React.FC = () => {
     })
   }
 
+  const getNextFolderType = (parentId: string): string => {
+    if (!parentId) {
+      return 'pole' // Racine
+    }
+    
+    // Trouver le parent dans l'arborescence
+    const findFolder = (folders: Folder[], id: string): Folder | null => {
+      for (const folder of folders) {
+        if (folder.id.toString() === id) return folder
+        if (folder.children && folder.children.length > 0) {
+          const found = findFolder(folder.children, id)
+          if (found) return found
+        }
+      }
+      return null
+    }
+    
+    const parentFolder = findFolder(folderTree, parentId)
+    if (!parentFolder) return 'service'
+    
+    const f = parentFolder as any
+    const parentType = f.folder_type || 'service'
+    
+    switch (parentType) {
+      case 'pole':
+        return 'filiale'
+      case 'filiale':
+        return 'service'
+      case 'service':
+        return 'sub_service'
+      case 'sub_service':
+        return 'sub_service'
+      default:
+        return 'service'
+    }
+  }
+
   const openModal = (folder?: Folder) => {
     if (folder) {
       setEditingFolder(folder)
+      const f = folder as any
       setFormData({
         name: folder.name,
         description: folder.description || '',
-        parentId: folder.parent_id ? folder.parent_id.toString() : '',
+        folderType: f.folder_type || 'service',
+        parentId: folder.parent ? folder.parent.toString() : '',
       })
     } else {
       setEditingFolder(null)
-      setFormData({ name: '', description: '', parentId: '' })
+      setFormData({ name: '', description: '', folderType: 'pole', parentId: '' })
     }
     setShowModal(true)
+  }
+
+  // Auto-mettre à jour folderType quand parentId change
+  const handleParentIdChange = (parentId: string) => {
+    const nextType = getNextFolderType(parentId)
+    setFormData(prev => ({ ...prev, parentId, folderType: nextType }))
   }
 
   const handleSave = async () => {
@@ -105,16 +153,18 @@ export const Folders: React.FC = () => {
     try {
       if (editingFolder) {
         // Update existing folder
-        await apiClient.put(`/folders/${editingFolder.id}/`, {
+        await apiClient.put(`/folders/folders/${editingFolder.id}/`, {
           name: formData.name,
           description: formData.description,
+          folder_type: formData.folderType,
           parent: formData.parentId || null,
         })
       } else {
         // Create new folder
-        await apiClient.post('/folders/', {
+        await apiClient.post('/folders/folders/', {
           name: formData.name,
           description: formData.description,
+          folder_type: formData.folderType,
           parent: formData.parentId || null,
         })
       }
@@ -129,7 +179,7 @@ export const Folders: React.FC = () => {
   const handleDelete = async (id: string | number) => {
     if (confirm('Êtes-vous sûr de vouloir supprimer ce dossier?')) {
       try {
-        await apiClient.delete(`/folders/${id}/`)
+        await apiClient.delete(`/folders/folders/${id}/`)
         await fetchFolders()
       } catch (err: any) {
         console.error('Error deleting folder:', err)
@@ -173,24 +223,23 @@ export const Folders: React.FC = () => {
 
                   {/* Folder icon with type detection */}
                   {(() => {
-                    // Determine folder type based on name and level
-                    const isFiliale = level === 0 && !folder.parent
-                    const isArchive = folder.name === 'Archive'
-                    const isDepartment = level === 1 && !isArchive && folder.parent
+                    // Determine folder type from folder_type field
+                    const f = folder as any
+                    const type = f.folder_type || 'service'
                     
-                    if (isFiliale) {
+                    if (type === 'filiale') {
                       return (
                         <div className="p-2 sm:p-2.5 rounded-lg sm:rounded-xl flex-shrink-0 bg-gradient-to-br from-red-500 to-red-600 shadow-md">
                           <Globe size={18} className="text-white sm:w-6 sm:h-6" />
                         </div>
                       )
-                    } else if (isArchive) {
+                    } else if (type === 'pole') {
                       return (
-                        <div className="p-2 sm:p-2.5 rounded-lg sm:rounded-xl flex-shrink-0 bg-gradient-to-br from-amber-500 to-amber-600 shadow-md">
-                          <Archive size={18} className="text-white sm:w-6 sm:h-6" />
+                        <div className="p-2 sm:p-2.5 rounded-lg sm:rounded-xl flex-shrink-0 bg-gradient-to-br from-blue-500 to-blue-600 shadow-md">
+                          <Globe size={18} className="text-white sm:w-6 sm:h-6" />
                         </div>
                       )
-                    } else if (isDepartment) {
+                    } else if (type === 'service') {
                       return (
                         <div className="p-2 sm:p-2.5 rounded-lg sm:rounded-xl flex-shrink-0 bg-gradient-to-br from-emerald-500 to-emerald-600 shadow-md">
                           <Briefcase size={18} className="text-white sm:w-6 sm:h-6" />
@@ -198,8 +247,8 @@ export const Folders: React.FC = () => {
                       )
                     } else {
                       return (
-                        <div className="p-2 sm:p-2.5 rounded-lg sm:rounded-xl flex-shrink-0 bg-gradient-to-br from-red-500 to-red-600 shadow-md">
-                          <FolderOpen size={18} className="text-white sm:w-6 sm:h-6" />
+                        <div className="p-2 sm:p-2.5 rounded-lg sm:rounded-xl flex-shrink-0 bg-gradient-to-br from-amber-500 to-amber-600 shadow-md">
+                          <Archive size={18} className="text-white sm:w-6 sm:h-6" />
                         </div>
                       )
                     }
@@ -224,17 +273,16 @@ export const Folders: React.FC = () => {
                   {/* Children count badge with type-based coloring */}
                   {hasChildren && (
                     (() => {
-                      const isFiliale = level === 0 && !folder.parent
-                      const isArchive = folder.name === 'Archive'
-                      const isDepartment = level === 1 && !isArchive && folder.parent
+                      const f = folder as any
+                      const type = f.folder_type || 'service'
                       
-                      const badgeStyles = isFiliale 
+                      const badgeStyles = type === 'filiale'
                         ? 'bg-red-50 text-red-700 border-red-100'
-                        : isArchive 
-                        ? 'bg-amber-50 text-amber-700 border-amber-100'
-                        : isDepartment
+                        : type === 'pole'
+                        ? 'bg-blue-50 text-blue-700 border-blue-100'
+                        : type === 'service'
                         ? 'bg-emerald-50 text-emerald-700 border-emerald-100'
-                        : 'bg-red-50 text-red-700 border-red-100'
+                        : 'bg-amber-50 text-amber-700 border-amber-100'
                       
                       return (
                         <span className={`
@@ -319,33 +367,35 @@ export const Folders: React.FC = () => {
 
             {/* Stats - Responsive grid with type-based colors */}
             <div className="grid grid-cols-2 sm:grid-cols-4 gap-2 sm:gap-4 mt-4 sm:mt-6">
-              <div className="card card-body p-3 sm:p-4 border-l-4 border-l-gray-600">
-                <div className="text-xl sm:text-2xl font-bold text-gray-900">{folders.length}</div>
-                <div className="text-xs text-gray-600 mt-1">Total</div>
-              </div>
-              <div className="card card-body p-3 sm:p-4 border-l-4 border-l-red-600">
-                <div className="text-xl sm:text-2xl font-bold text-red-600">
-                  {folders.filter((f: Folder) => !f.parent && f.name !== 'Archive').length}
-                </div>
-                <div className="text-xs text-gray-600 mt-1">Filiales</div>
-              </div>
-              <div className="card card-body p-3 sm:p-4 border-l-4 border-l-emerald-600">
-                <div className="text-xl sm:text-2xl font-bold text-emerald-600">
-                  {folders.filter((f: Folder) => {
-                    // Un département est un dossier dont le parent est une filiale
-                    // (le parent d'une filiale est null, donc le parent d'un département ne l'est pas)
-                    const parentFolder = folders.find(pf => pf.id === f.parent)
-                    return f.parent && parentFolder && !parentFolder.parent && f.name !== 'Archive'
-                  }).length}
-                </div>
-                <div className="text-xs text-gray-600 mt-1">Départements</div>
-              </div>
-              <div className="card card-body p-3 sm:p-4 border-l-4 border-l-amber-600">
-                <div className="text-xl sm:text-2xl font-bold text-amber-600">
-                  {folders.filter((f: Folder) => f.name === 'Archive').length}
-                </div>
-                <div className="text-xs text-gray-600 mt-1">Archives</div>
-              </div>
+              {(() => {
+                const allFolders = flatFolders(folderTree)
+                return (
+                  <>
+                    <div className="card card-body p-3 sm:p-4 border-l-4 border-l-gray-600">
+                      <div className="text-xl sm:text-2xl font-bold text-gray-900">{allFolders.length}</div>
+                      <div className="text-xs text-gray-600 mt-1">Total</div>
+                    </div>
+                    <div className="card card-body p-3 sm:p-4 border-l-4 border-l-red-600">
+                      <div className="text-xl sm:text-2xl font-bold text-red-600">
+                        {allFolders.filter((f: Folder) => (f as any).folder_type === 'filiale').length}
+                      </div>
+                      <div className="text-xs text-gray-600 mt-1">Filiales</div>
+                    </div>
+                    <div className="card card-body p-3 sm:p-4 border-l-4 border-l-emerald-600">
+                      <div className="text-xl sm:text-2xl font-bold text-emerald-600">
+                        {allFolders.filter((f: Folder) => (f as any).folder_type === 'service').length}
+                      </div>
+                      <div className="text-xs text-gray-600 mt-1">Services</div>
+                    </div>
+                    <div className="card card-body p-3 sm:p-4 border-l-4 border-l-amber-600">
+                      <div className="text-xl sm:text-2xl font-bold text-amber-600">
+                        {allFolders.filter((f: Folder) => (f as any).folder_type === 'sub_service').length}
+                      </div>
+                      <div className="text-xs text-gray-600 mt-1">Sous-services</div>
+                    </div>
+                  </>
+                )
+              })()}
             </div>
           </div>
 
@@ -359,7 +409,7 @@ export const Folders: React.FC = () => {
           {/* Folders Tree */}
           {!loading && (
             <div className="card card-body p-4 sm:p-6">
-              {folders.length > 0 ? (
+              {folderTree.length > 0 ? (
                 <FolderTree />
               ) : (
                 <div className="text-center py-12 sm:py-16">
@@ -400,6 +450,51 @@ export const Folders: React.FC = () => {
 
             <div>
               <label className="block text-sm font-semibold text-gray-900 mb-2">
+                Dossier parent (optionnel)
+              </label>
+              <select
+                value={formData.parentId}
+                onChange={(e) => handleParentIdChange(e.target.value)}
+                className="w-full px-4 py-3 border border-gray-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-red-500 focus:border-transparent bg-white"
+              >
+                <option value="">-- Aucun parent (Pôle) --</option>
+                {getAllFoldersFlat(folderTree).map(({ folder: f, level }) => (
+                  <option key={f.id} value={f.id}>
+                    {'  '.repeat(level)}
+                    {level > 0 ? '└─ ' : ''}
+                    {f.name} ({(() => {
+                      const typeMap: Record<string, string> = {
+                        'pole': 'Pôle',
+                        'filiale': 'Filiale',
+                        'service': 'Service',
+                        'sub_service': 'Sous-service'
+                      }
+                      return typeMap[(f as any).folder_type] || (f as any).folder_type
+                    })()})
+                  </option>
+                ))}
+              </select>
+            </div>
+
+            <div>
+              <label className="block text-sm font-semibold text-gray-900 mb-2">
+                Type de dossier <span className="text-xs text-gray-500">(auto-détecté)</span>
+              </label>
+              <div className="px-4 py-3 border border-gray-200 rounded-xl bg-gray-50 text-gray-700 font-medium">
+                {(() => {
+                  const typeMap: Record<string, string> = {
+                    'pole': '🌍 Pôle',
+                    'filiale': '🏢 Filiale',
+                    'service': '📂 Service',
+                    'sub_service': '📋 Sous-service'
+                  }
+                  return typeMap[formData.folderType] || formData.folderType
+                })()}
+              </div>
+            </div>
+
+            <div>
+              <label className="block text-sm font-semibold text-gray-900 mb-2">
                 Description
               </label>
               <textarea
@@ -409,22 +504,6 @@ export const Folders: React.FC = () => {
                 className="w-full px-4 py-3 border border-gray-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-red-500 focus:border-transparent resize-none"
                 rows={4}
               />
-            </div>
-
-            <div>
-              <label className="block text-sm font-semibold text-gray-900 mb-2">
-                Dossier parent (optionnel)
-              </label>
-              <select
-                value={formData.parentId}
-                onChange={(e) => setFormData({ ...formData, parentId: e.target.value })}
-                className="w-full px-4 py-3 border border-gray-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-red-500 focus:border-transparent bg-white"
-              >
-                <option value="">-- Aucun parent --</option>
-                {rootFolders.map(f => (
-                  <option key={f.id} value={f.id}>{f.name}</option>
-                ))}
-              </select>
             </div>
 
             <div className="flex gap-3 pt-4 border-t border-gray-100">

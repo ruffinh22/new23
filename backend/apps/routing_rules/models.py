@@ -2,7 +2,6 @@ from django.db import models
 from django.conf import settings
 from django.utils import timezone
 from apps.folders.models import Folder
-from apps.users.models import Branch
 
 
 class DepartmentDocumentType(models.Model):

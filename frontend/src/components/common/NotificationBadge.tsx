@@ -1,5 +1,5 @@
 import { Bell, Clock, AlertCircle, CheckCircle2, Zap, FileText } from 'lucide-react'
-import { useState, useEffect } from 'react'
+import { useState, useEffect, useRef } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { useNotifications } from '@/contexts/NotificationContext'
 import { notificationService } from '@/services/notificationService'
@@ -13,29 +13,23 @@ export function NotificationBadge({ onClick }: NotificationBadgeProps) {
   const { unreadCount, notifications, markAsRead } = useNotifications()
   const [showDropdown, setShowDropdown] = useState(false)
   const [showLatestNotif, setShowLatestNotif] = useState(false)
-  const [lastUnreadCount, setLastUnreadCount] = useState(unreadCount)
+  const previousUnreadCountRef = useRef(unreadCount)
 
-  // Synchroniser lastUnreadCount avec unreadCount actuel
+  // Détecte les NOUVELLES notifications et affiche le tooltip pendant 3s
   useEffect(() => {
-    console.log(`🔄 Initialize lastUnreadCount: ${unreadCount}`)
-    setLastUnreadCount(unreadCount)
-  }, [unreadCount])
-
-  // Détecte les NOUVELLES notifications et affiche le tooltip pendant 2s
-  useEffect(() => {
-    if (unreadCount > lastUnreadCount) {
-      console.log(`🎯 NEW NOTIFICATION DETECTED: was ${lastUnreadCount}, now ${unreadCount}`)
+    if (unreadCount > previousUnreadCountRef.current) {
+      console.log(`🎯 NEW NOTIFICATION DETECTED: was ${previousUnreadCountRef.current}, now ${unreadCount}`)
       setShowLatestNotif(true)
-      setLastUnreadCount(unreadCount)
       
-      // Auto-hide après 2 secondes
+      // Auto-hide après 3 secondes
       const timer = setTimeout(() => {
         setShowLatestNotif(false)
-      }, 2000)
+      }, 3000)
       
+      previousUnreadCountRef.current = unreadCount
       return () => clearTimeout(timer)
     }
-  }, [unreadCount, lastUnreadCount])
+  }, [unreadCount])
 
   // Récupérer la dernière notification (non-lue si dispo, sinon la plus récente)
   const latestNotification = notifications.length > 0

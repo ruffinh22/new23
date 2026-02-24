@@ -3,7 +3,8 @@ from rest_framework_simplejwt.serializers import TokenObtainPairSerializer
 from rest_framework_simplejwt.tokens import RefreshToken
 from django.contrib.auth import get_user_model, authenticate
 from django.utils.translation import gettext_lazy as _
-from .models import User, Department, Branch
+from .models import User
+from apps.folders.models import Folder
 from apps.folders.serializers import FolderSerializer, FolderBranchSerializer, FolderDepartmentSerializer
 from apps.documents.models import DocumentTransfer
 import logging
@@ -14,108 +15,42 @@ logger = logging.getLogger('apps.users')
 User = get_user_model()
 
 
-# ===== SERIALIZERS POUR ACCÈS VIA API UNIFIÉE  (Folder-based) =====
+# ===== SERIALIZERS POUR ACCÈS VIA API UNIFIÉE (Folder-based) =====
+
+class BranchSerializer(FolderBranchSerializer):
+    """Sérialiseur pour les Filiales via la structure unifiée Folder.
+    
+    Hérite de FolderBranchSerializer pour exposer les filiales comme des Folders type='filiale'.
+    ✅ CONVERGED: Legacy Branch model removed, now uses Folder('filiale')
+    """
+    pass
+
 
 class BranchSerializerV2(FolderBranchSerializer):
-    """Sérialiseur pour les Branches via la structure unifiée Folder.
+    """Alias pour BranchSerializer - compatibilité avec ancien code."""
+    pass
+
+
+class DepartmentSerializer(FolderDepartmentSerializer):
+    """Sérialiseur pour les Services/Départements via la structure unifiée Folder.
     
-    Utilise FolderBranchSerializer pour exposer les filiales comme des Folders type='branch'.
+    Hérite de FolderDepartmentSerializer pour exposer les services comme des Folders type='service'.
+    ✅ CONVERGED: Legacy Department model removed, now uses Folder('service')
     """
     pass
 
 
 class DepartmentSerializerV2(FolderDepartmentSerializer):
-    """Sérialiseur pour les Departements via la structure unifiée Folder.
-    
-    Utilise FolderDepartmentSerializer pour exposer les département comme des Folders type='department'.
-    """
+    """Alias pour DepartmentSerializer - compatibilité avec ancien code."""
     pass
 
 
-# ===== SERIALIZERS POUR COMPATIBILITÉ RÉTROACTIVE (Branch/Department models) =====
-
-class BranchSerializer(serializers.ModelSerializer):
-    """Sérialiseur pour le modèle Branch - DEPRECATED.
+class DepartmentDetailSerializer(FolderDepartmentSerializer):
+    """Sérialiseur détaillé pour les Services/Départements.
     
-    Garder pour la compatibilité rétroactive. Utiliser BranchSerializerV2 pour nouvelle API.
+    ✅ CONVERGED: Now derives from FolderDepartmentSerializer
     """
-    
-    folder_name = serializers.CharField(source='folder.name', read_only=True)
-    departments_count = serializers.SerializerMethodField()
-    
-    class Meta:
-        model = Branch
-        fields = [
-            'id', 'name', 'code', 'country_code', 'description', 'folder',
-            'folder_name', 'departments_count', 'is_active', 'created_at', 'updated_at'
-        ]
-        read_only_fields = ['id', 'folder', 'created_at', 'updated_at']
-    
-    def get_departments_count(self, obj):
-        """Compte le nombre de départements dans la filiale."""
-        return obj.departments.count() if obj.departments else 0
-
-
-class DepartmentSerializer(serializers.ModelSerializer):
-    """Sérialiseur pour le modèle Department - DEPRECATED.
-    
-    Garder pour la compatibilité rétroactive. Utiliser DepartmentSerializerV2 pour nouvelle API.
-    """
-    
-    folder_name = serializers.CharField(source='folder.name', read_only=True, allow_null=True)
-    branch_name = serializers.CharField(source='branch.name', read_only=True, allow_null=True)
-    users_count = serializers.SerializerMethodField()
-    
-    class Meta:
-        model = Department
-        fields = [
-            'id', 'name', 'code', 'description', 'folder',
-            'folder_name', 'branch', 'branch_name', 'users_count', 'is_active', 'created_at', 'updated_at'
-        ]
-        read_only_fields = ['id', 'folder', 'created_at', 'updated_at']
-    
-    def get_users_count(self, obj):
-        """Compte le nombre d'utilisateurs dans le département."""
-        if not obj.folder:
-            return 0
-        
-        # Count users where department (FK to Folder) points to this department's folder
-        from apps.users.models import User
-        return User.objects.filter(department=obj.folder).count()
-
-
-class DepartmentDetailSerializer(serializers.ModelSerializer):
-    """Sérialiseur détaillé pour les départements - DEPRECATED."""
-    
-    folder_data = serializers.SerializerMethodField()
-    users = serializers.SerializerMethodField()
-    
-    class Meta:
-        model = Department
-        fields = [
-            'id', 'name', 'code', 'description', 'folder',
-            'folder_data', 'users', 'is_active', 'created_at', 'updated_at'
-        ]
-        read_only_fields = ['id', 'folder', 'created_at', 'updated_at']
-    
-    def get_folder_data(self, obj):
-        """Retourne les détails du dossier."""
-        if obj.folder:
-            return {
-                'id': obj.folder.id,
-                'name': obj.folder.name,
-                'full_path': obj.folder.get_full_path(),
-            }
-        return None
-    
-    def get_users(self, obj):
-        """Retourne la liste des utilisateurs."""
-        if not obj.folder:
-            return []
-        
-        from apps.users.models import User
-        users = User.objects.filter(department=obj.folder).values('id', 'matricule', 'email', 'first_name', 'last_name', 'role')
-        return list(users)
+    pass
 
 
 class UserSerializer(serializers.ModelSerializer):
@@ -125,7 +60,7 @@ class UserSerializer(serializers.ModelSerializer):
         model = User
         fields = [
             'id', 'matricule', 'email', 'first_name', 'last_name',
-            'department', 'role', 'phone', 'avatar', 'is_active', 'is_staff',
+            'pole', 'branch', 'department', 'role', 'phone', 'avatar', 'is_active', 'is_staff',
             'date_joined', 'last_login'
         ]
         read_only_fields = ['id', 'date_joined', 'last_login']
@@ -189,23 +124,30 @@ class UserCreateSerializer(serializers.ModelSerializer):
         # Extract pole_id before processing
         pole_id = data.pop('pole', None)
         
-        # Convert department name to Department instance
+        # Convert department name to Folder(type='service') instance
         department_name = data.pop('department', None)
         branch_id = data.pop('branch', None)
         
         if department_name:
             try:
-                # Filter by both name and branch if branch is provided
-                query = {'name': department_name}
+                # Filter by name and type='service'
+                # If branch_id (Folder type='filiale') is provided, find service that is child of this filiale
                 if branch_id:
-                    query['branch_id'] = branch_id
-                
-                department = Department.objects.get(**query)
+                    department = Folder.objects.get(
+                        name=department_name,
+                        folder_type='service',
+                        parent_id=branch_id
+                    )
+                else:
+                    department = Folder.objects.get(
+                        name=department_name,
+                        folder_type='service'
+                    )
                 data['department'] = department
-            except Department.DoesNotExist:
-                raise serializers.ValidationError({'department': f'Département "{department_name}" introuvable pour cette filiale.'})
-            except Department.MultipleObjectsReturned:
-                raise serializers.ValidationError({'department': f'Plusieurs départements "{department_name}" trouvés. Spécifiez la filiale.'})
+            except Folder.DoesNotExist:
+                raise serializers.ValidationError({'department': f'Service "{department_name}" introuvable pour cette filiale.'})
+            except Folder.MultipleObjectsReturned:
+                raise serializers.ValidationError({'department': f'Plusieurs services "{department_name}" trouvés. Spécifiez la filiale.'})
         
         # Put pole_id and branch_id back in data for User creation
         if pole_id:
@@ -227,13 +169,26 @@ class UserUpdateSerializer(serializers.ModelSerializer):
     
     role = serializers.ChoiceField(choices=User.ROLE_CHOICES, required=False)
     is_staff = serializers.BooleanField(required=False)
-    branch = serializers.PrimaryKeyRelatedField(queryset=Branch.objects.all(), required=False, allow_null=True)
-    department = serializers.PrimaryKeyRelatedField(queryset=Department.objects.all(), required=False, allow_null=True)
+    pole = serializers.PrimaryKeyRelatedField(
+        queryset=Folder.objects.filter(folder_type='pole', is_active=True),
+        required=False,
+        allow_null=True
+    )
+    branch = serializers.PrimaryKeyRelatedField(
+        queryset=Folder.objects.filter(folder_type='filiale', is_active=True),
+        required=False,
+        allow_null=True
+    )
+    department = serializers.PrimaryKeyRelatedField(
+        queryset=Folder.objects.filter(folder_type='service', is_active=True),
+        required=False,
+        allow_null=True
+    )
     
     class Meta:
         model = User
         fields = [
-            'email', 'first_name', 'last_name', 'department', 'branch', 'phone', 'avatar',
+            'email', 'first_name', 'last_name', 'pole', 'department', 'branch', 'phone', 'avatar',
             'role', 'is_staff'
         ]
     
@@ -245,14 +200,14 @@ class UserUpdateSerializer(serializers.ModelSerializer):
     
     def update(self, instance, validated_data):
         """Mettre à jour l'utilisateur et synchroniser role/is_staff."""
-        # Handle branch - already a Branch object from PrimaryKeyRelatedField
+        # Handle branch - already a Folder object from PrimaryKeyRelatedField
         branch = validated_data.get('branch')
         department = validated_data.get('department')
         
-        # Validate department belongs to branch
+        # Validate department belongs to branch (department.parent == branch)
         if department is not None and branch is not None:
-            if department.branch_id != branch.id:
-                raise serializers.ValidationError({'department': 'Le département n\'appartient pas à cette filiale.'})
+            if department.parent_id != branch.id:
+                raise serializers.ValidationError({'department': 'Le service n\'appartient pas à cette filiale.'})
         
         # Handle role and is_staff synchronization
         role = validated_data.get('role')
@@ -338,13 +293,22 @@ class CustomTokenObtainPairSerializer(TokenObtainPairSerializer):
         token['last_name'] = user.last_name
         token['role'] = user.role  # Use the actual role value (AGENT, ADMIN) not the display name
         
+        # Pole
+        token['pole'] = user.pole.id if user.pole else None
+        token['pole_id'] = user.pole.id if user.pole else None
+        token['pole_name'] = user.pole.name if user.pole else None
+        
         # Branch (Filiale) 
         token['branch'] = user.branch.id if user.branch else None
+        token['branch_id'] = user.branch.id if user.branch else None
         token['branch_name'] = user.branch.name if user.branch else None
+        token['filiale_id'] = user.branch.id if user.branch else None
+        token['filiale_name'] = user.branch.name if user.branch else None
         
-        # Department
-        token['department'] = user.department.id if user.department else None
-        token['department_name'] = user.department.name if user.department else None
+        # Service (Department folder)
+        token['service'] = user.department.id if user.department else None
+        token['service_id'] = user.department.id if user.department else None
+        token['service_name'] = user.department.name if user.department else None
         
         token['is_staff'] = user.is_staff
         token['is_superuser'] = user.is_superuser
@@ -435,12 +399,15 @@ class UserDetailSerializer(serializers.ModelSerializer):
 
 
 class DocumentShareSerializer(serializers.ModelSerializer):
-    """Sérialiseur pour les partages de documents entre utilisateurs."""
+    """Sérialiseur pour les partages de documents."""
     
     shared_by_name = serializers.CharField(source='shared_by.get_full_name', read_only=True)
-    shared_with_name = serializers.CharField(source='shared_with.get_full_name', read_only=True)
-    document_name = serializers.CharField(source='document.name', read_only=True)
+    shared_with_name = serializers.SerializerMethodField()
+    shared_with_folder_name = serializers.CharField(source='shared_with_folder.name', read_only=True)
+    shared_with_folder_type = serializers.CharField(source='shared_with_folder.folder_type', read_only=True)
+    document_name = serializers.CharField(source='document.title', read_only=True)
     permission_display = serializers.CharField(source='get_permission_display', read_only=True)
+    share_type_display = serializers.CharField(source='get_share_type_display', read_only=True)
     is_valid = serializers.SerializerMethodField()
     
     class Meta:
@@ -449,12 +416,19 @@ class DocumentShareSerializer(serializers.ModelSerializer):
         fields = [
             'id', 'document', 'document_name',
             'shared_by', 'shared_by_name',
+            'share_type', 'share_type_display',
             'shared_with', 'shared_with_name',
+            'shared_with_folder', 'shared_with_folder_name', 'shared_with_folder_type',
             'permission', 'permission_display',
             'message', 'shared_at', 'expires_at',
             'accessed_at', 'is_valid'
         ]
         read_only_fields = ['id', 'shared_at', 'accessed_at', 'shared_by']
+    
+    def get_shared_with_name(self, obj):
+        if obj.shared_with:
+            return obj.shared_with.get_full_name()
+        return None
     
     def get_is_valid(self, obj):
         return obj.is_valid()
@@ -463,36 +437,72 @@ class DocumentShareSerializer(serializers.ModelSerializer):
 class DocumentShareCreateSerializer(serializers.ModelSerializer):
     """Sérialiseur pour créer un partage de document."""
     
-    shared_with_matricule = serializers.CharField(write_only=True, required=True)
+    # Support deux modes: partage avec utilisateur OU avec dossier
+    shared_with_matricule = serializers.CharField(write_only=True, required=False, allow_blank=True)
+    shared_with_folder_id = serializers.IntegerField(write_only=True, required=False)
     
     class Meta:
         from django.apps import apps
         model = apps.get_model('documents', 'DocumentShare')
         fields = [
-            'document', 'shared_with_matricule',
+            'document', 'share_type',
+            'shared_with_matricule', 'shared_with_folder_id',
             'permission', 'message', 'expires_at'
         ]
     
-    def validate_shared_with_matricule(self, value):
-        """Vérifie que l'utilisateur existe."""
-        from apps.users.models import User
-        try:
-            user = User.objects.get(matricule=value)
-            return user
-        except User.DoesNotExist:
-            raise serializers.ValidationError(f"Utilisateur '{value}' not found")
+    def validate(self, data):
+        """Valider que soit shared_with_matricule soit shared_with_folder_id est fourni."""
+        shared_with_matricule = data.get('shared_with_matricule')
+        shared_with_folder_id = data.get('shared_with_folder_id')
+        
+        if not shared_with_matricule and not shared_with_folder_id:
+            raise serializers.ValidationError(
+                "Either 'shared_with_matricule' (for user) or 'shared_with_folder_id' (for folder) must be provided"
+            )
+        
+        if shared_with_matricule and shared_with_folder_id:
+            raise serializers.ValidationError(
+                "Provide either 'shared_with_matricule' OR 'shared_with_folder_id', not both"
+            )
+        
+        return data
     
     def create(self, validated_data):
-        """Crée le partage avec l'utilisateur courant comme partageur."""
-        request = self.context.get('request')
-        shared_with = validated_data.pop('shared_with_matricule')
+        """Crée le partage (utilisateur ou dossier)."""
+        from apps.users.models import User
+        from apps.folders.models import Folder
+        
+        shared_with_matricule = validated_data.pop('shared_with_matricule', None)
+        shared_with_folder_id = validated_data.pop('shared_with_folder_id', None)
+        
+        share_obj = {}
+        
+        if shared_with_matricule:
+            # Partage avec utilisateur
+            try:
+                user = User.objects.get(matricule=shared_with_matricule)
+                share_obj = {
+                    'shared_with': user,
+                    'share_type': 'USER',
+                    **validated_data
+                }
+            except User.DoesNotExist:
+                raise serializers.ValidationError(f"Utilisateur '{shared_with_matricule}' not found")
+        
+        elif shared_with_folder_id:
+            # Partage avec dossier
+            try:
+                folder = Folder.objects.get(id=shared_with_folder_id)
+                share_obj = {
+                    'shared_with_folder': folder,
+                    'share_type': 'FOLDER',
+                    **validated_data
+                }
+            except Folder.DoesNotExist:
+                raise serializers.ValidationError(f"Dossier avec id {shared_with_folder_id} not found")
         
         from django.apps import apps
         DocumentShare = apps.get_model('documents', 'DocumentShare')
+        share_obj['shared_by'] = self.context['request'].user
         
-        share = DocumentShare.objects.create(
-            shared_by=request.user,
-            shared_with=shared_with,
-            **validated_data
-        )
-        return share
+        return DocumentShare.objects.create(**share_obj)
