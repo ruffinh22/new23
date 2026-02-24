@@ -222,6 +222,7 @@ class DocumentCreateSerializer(serializers.ModelSerializer):
     """Sérialiseur pour la création de documents avec validation automatique.
     
     ✅ UTILISE DocumentValidator pour validation explicite du JSON.
+    ✅ SUPPORTE la distribution aux destinataires (pôle/filiale/service) lors du téléchargement.
     """
     
     validation_details = serializers.SerializerMethodField(read_only=True)
@@ -231,6 +232,18 @@ class DocumentCreateSerializer(serializers.ModelSerializer):
     file_type_validation = serializers.SerializerMethodField(read_only=True)
     folder_id = serializers.IntegerField(required=False, allow_null=True, write_only=True)
     agent_id = serializers.IntegerField(required=False, allow_null=True, write_only=True)
+    
+    # Champs pour la distribution du document au destinataire
+    send_to_recipient = serializers.BooleanField(default=False, write_only=True, required=False)
+    recipient_type = serializers.ChoiceField(
+        choices=['pole', 'filiale', 'service'],
+        required=False,
+        allow_blank=True,
+        write_only=True
+    )
+    recipient_pole_id = serializers.IntegerField(required=False, allow_null=True, write_only=True)
+    recipient_filiale_id = serializers.IntegerField(required=False, allow_null=True, write_only=True)
+    recipient_service_id = serializers.IntegerField(required=False, allow_null=True, write_only=True)
     
     class Meta:
         model = Document
@@ -248,6 +261,11 @@ class DocumentCreateSerializer(serializers.ModelSerializer):
             'validation_warnings',
             'validation_details',
             'file_type_validation',
+            'send_to_recipient',
+            'recipient_type',
+            'recipient_pole_id',
+            'recipient_filiale_id',
+            'recipient_service_id',
         ]
         read_only_fields = ['id', 'status', 'validation_status', 'validation_errors', 'validation_warnings', 'validation_details', 'file_type_validation']
     
@@ -255,6 +273,7 @@ class DocumentCreateSerializer(serializers.ModelSerializer):
         """Valide les données de création avec DocumentValidator.
         
         ✅ UTILISE DocumentValidator.validate_document_create() pour validation centralisée.
+        ✅ Valide également les données de destinataire si send_to_recipient=true.
         """
         # Préparer les données pour la validation
         validation_data = {
@@ -269,6 +288,45 @@ class DocumentCreateSerializer(serializers.ModelSerializer):
             DocumentValidator.validate_document_create(validation_data)
         except ValidationError as e:
             raise serializers.ValidationError(str(e))
+        
+        # Valider les données de destinataire si applicables
+        send_to_recipient = data.get('send_to_recipient', False)
+        if send_to_recipient:
+            recipient_type = data.get('recipient_type')
+            
+            if not recipient_type:
+                raise serializers.ValidationError(
+                    {'recipient_type': 'Type de destinataire requis si send_to_recipient est vrai.'}
+                )
+            
+            # Valider que l'ID du destinataire correspond au type
+            if recipient_type == 'pole':
+                recipient_id = data.get('recipient_pole_id')
+                if not recipient_id:
+                    raise serializers.ValidationError(
+                        {'recipient_pole_id': 'ID du pôle requis.'}
+                    )
+            elif recipient_type == 'filiale':
+                recipient_id = data.get('recipient_filiale_id')
+                if not recipient_id:
+                    raise serializers.ValidationError(
+                        {'recipient_filiale_id': 'ID de la filiale requis.'}
+                    )
+            elif recipient_type == 'service':
+                recipient_id = data.get('recipient_service_id')
+                if not recipient_id:
+                    raise serializers.ValidationError(
+                        {'recipient_service_id': 'ID du service requis.'}
+                    )
+            
+            # Vérifier que le destinataire (Folder) existe
+            from apps.folders.models import Folder
+            try:
+                folder = Folder.objects.get(id=recipient_id)
+            except Folder.DoesNotExist:
+                raise serializers.ValidationError(
+                    {f'recipient_{recipient_type}_id': f'Le destinataire {recipient_type} n\'existe pas.'}
+                )
         
         return data
     
@@ -292,9 +350,22 @@ class DocumentCreateSerializer(serializers.ModelSerializer):
         return value
     
     def create(self, validated_data):
-        """Crée le document avec validation automatique et assigne le dossier optionnel."""
+        """Crée le document avec validation automatique et assigne le dossier optionnel.
+        
+        Si send_to_recipient=true, crée également un DocumentShare vers le destinataire.
+        ✅ Utilise une transaction pour garantir la cohérence.
+        """
         from .services import DocumentService
         from apps.folders.models import Folder
+        from django.db import transaction
+        from .models import DocumentShare
+        
+        # Extraire les données de destinataire
+        send_to_recipient = validated_data.pop('send_to_recipient', False)
+        recipient_type = validated_data.pop('recipient_type', None)
+        recipient_pole_id = validated_data.pop('recipient_pole_id', None)
+        recipient_filiale_id = validated_data.pop('recipient_filiale_id', None)
+        recipient_service_id = validated_data.pop('recipient_service_id', None)
         
         file_obj = validated_data['file']
         folder_id = validated_data.pop('folder_id', None)  # Extraire folder_id du frontend
@@ -304,15 +375,37 @@ class DocumentCreateSerializer(serializers.ModelSerializer):
         if hasattr(file_obj, '_file_type_validation'):
             file_type_validation = file_obj._file_type_validation
         
-        document, validation_result, is_valid = DocumentService.create_document_with_validation(
-            title=validated_data['title'],
-            file=file_obj,
-            document_type=validated_data['document_type'],
-            agent=self.context['request'].user,
-            description=validated_data.get('description', ''),
-            folder_id=folder_id,
-            auto_validate=True
-        )
+        # Créer le document + éventuellement le partage en transaction atomique
+        with transaction.atomic():
+            document, validation_result, is_valid = DocumentService.create_document_with_validation(
+                title=validated_data['title'],
+                file=file_obj,
+                document_type=validated_data['document_type'],
+                agent=self.context['request'].user,
+                description=validated_data.get('description', ''),
+                folder_id=folder_id,
+                auto_validate=True
+            )
+            
+            # Si le document doit être envoyé à un destinataire, créer le DocumentShare
+            if send_to_recipient and recipient_type:
+                # Déterminer l'ID du destinataire basé sur le type
+                recipient_id = {
+                    'pole': recipient_pole_id,
+                    'filiale': recipient_filiale_id,
+                    'service': recipient_service_id,
+                }.get(recipient_type)
+                
+                if recipient_id:
+                    recipient_folder = Folder.objects.get(id=recipient_id)
+                    DocumentShare.objects.create(
+                        document=document,
+                        shared_by=self.context['request'].user,
+                        share_type='FOLDER',
+                        shared_with_folder=recipient_folder,
+                        permission='VIEW',  # Par défaut, permission de consultation
+                        message=f'Document envoyé à {recipient_folder.name}'
+                    )
         
         # ✅ Le folder_id est maintenant respecté via DocumentService
         # Plus besoin de le changer après création

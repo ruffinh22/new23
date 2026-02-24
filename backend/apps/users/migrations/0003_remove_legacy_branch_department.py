@@ -1,4 +1,4 @@
-# Generated migration to drop legacy Branch and Department tables
+# Generated migration to mark legacy Branch and Department tables as handled
 # These models have been replaced by the unified Folder model
 # ✅ CONVERGENCE: Branch (filiale) and Department (service) are now Folder objects
 
@@ -12,14 +12,7 @@ class Migration(migrations.Migration):
     ]
 
     operations = [
-        # ✅ Direct deletion of legacy models
-        # The models no longer exist in code, but tables exist in DB
-        # This step allows the migration to proceed by marking them as deleted in migration history
-        
-        migrations.DeleteModel(
-            name='Department',
-        ),
-        migrations.DeleteModel(
-            name='Branch',
-        ),
+        # ✅ No operations needed - models already removed from code
+        # The migration history records that we've moved past these legacy models
+        # Database tables will be handled by subsequent cleanup if needed
     ]

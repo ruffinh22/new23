@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react'
-import { X, Users, FolderOpen, Send, AlertCircle } from 'lucide-react'
+import { Users, FolderOpen, Send, AlertCircle } from 'lucide-react'
 import { Modal } from '@/components/common'
 import { apiClient } from '@/services/api'
 
@@ -122,15 +122,7 @@ export const ShareDocumentModal: React.FC<ShareDocumentModalProps> = ({
     }
   }
 
-  const getRecipientLabel = () => {
-    if (shareType === 'user') {
-      const user = users.find(u => u.matricule === selectedUser)
-      return user ? `${user.first_name} ${user.last_name} (${user.matricule})` : 'Sélectionner un utilisateur'
-    } else {
-      const folder = folders.find(f => f.id.toString() === selectedFolder)
-      return folder ? `${folder.name} (${folder.folder_type})` : 'Sélectionner un dossier'
-    }
-  }
+  
 
   const typeLabels: Record<string, string> = {
     'pole': '🌍 Pôle',

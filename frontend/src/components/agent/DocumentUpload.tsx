@@ -37,6 +37,14 @@ export const DocumentUpload: React.FC<DocumentUploadProps> = ({ isOpen = false, 
   const [filiale, setFiliale] = useState<string | number>('')
   const [service, setService] = useState<string | number>('')
 
+  // Send to recipient (optional)
+  const [sendToRecipient, setSendToRecipient] = useState(false)
+  const [recipientType, setRecipientType] = useState<'pole' | 'filiale' | 'service' | 'user'>('pole')
+  const [recipientPole, setRecipientPole] = useState<string | number>('')
+  const [recipientFiliale, setRecipientFiliale] = useState<string | number>('')
+  const [recipientService, setRecipientService] = useState<string | number>('')
+  const [recipientUser, setRecipientUser] = useState<string>('')
+
   // Dropdown options
   const [poles, setPoles] = useState<Folder[]>([])
   const [filiales, setFiliales] = useState<Folder[]>([])
@@ -252,6 +260,22 @@ export const DocumentUpload: React.FC<DocumentUploadProps> = ({ isOpen = false, 
       return
     }
 
+    // Validate recipient if sending to recipient
+    if (sendToRecipient) {
+      if (recipientType === 'pole' && !recipientPole) {
+        setError('❌ Veuillez sélectionner un pôle destinataire')
+        return
+      }
+      if (recipientType === 'filiale' && (!recipientPole || !recipientFiliale)) {
+        setError('❌ Veuillez sélectionner une filiale destinataire')
+        return
+      }
+      if (recipientType === 'service' && (!recipientPole || !recipientFiliale || !recipientService)) {
+        setError('❌ Veuillez sélectionner un service destinataire')
+        return
+      }
+    }
+
     setIsLoading(true)
     const formData = new FormData()
     formData.append('file', file)
@@ -259,12 +283,27 @@ export const DocumentUpload: React.FC<DocumentUploadProps> = ({ isOpen = false, 
     formData.append('document_type', documentType)
     formData.append('description', description)
     formData.append('agent_id', String(user?.id || ''))
+    
     // Service is optional - only add if provided
     if (service) {
       formData.append('folder_id', String(service))
     } else {
       // Use filiale as fallback if service not assigned
       formData.append('folder_id', String(filiale))
+    }
+
+    // Add recipient info if sending to recipient
+    if (sendToRecipient) {
+      formData.append('send_to_recipient', 'true')
+      formData.append('recipient_type', recipientType)
+      
+      if (recipientType === 'pole') {
+        formData.append('recipient_pole_id', String(recipientPole))
+      } else if (recipientType === 'filiale') {
+        formData.append('recipient_filiale_id', String(recipientFiliale))
+      } else if (recipientType === 'service') {
+        formData.append('recipient_service_id', String(recipientService))
+      }
     }
 
     try {
@@ -364,6 +403,197 @@ export const DocumentUpload: React.FC<DocumentUploadProps> = ({ isOpen = false, 
             <div>
               <label className="block text-sm font-medium text-gray-700 mb-2">Titre du document *</label>
               <Input placeholder="Ex: Demande de congé janvier 2026" value={title} onChange={(e) => setTitle(e.target.value)} />
+            </div>
+
+            {/* Send to Recipient Toggle */}
+            <div className="p-4 bg-indigo-50 border-2 border-indigo-300 rounded-lg">
+              <div className="flex items-center justify-between">
+                <div>
+                  <h3 className="font-bold text-indigo-800 mb-1">📤 Envoyer vers un destinataire</h3>
+                  <p className="text-sm text-indigo-700">
+                    Activez cette option pour envoyer le document vers un pôle, filiale ou service spécifique
+                  </p>
+                </div>
+                <button
+                  onClick={() => setSendToRecipient(!sendToRecipient)}
+                  className={`relative inline-flex h-8 w-14 items-center rounded-full transition-colors ${
+                    sendToRecipient ? 'bg-indigo-600' : 'bg-gray-300'
+                  }`}
+                >
+                  <span
+                    className={`inline-block h-6 w-6 transform rounded-full bg-white transition-transform ${
+                      sendToRecipient ? 'translate-x-7' : 'translate-x-1'
+                    }`}
+                  />
+                </button>
+              </div>
+
+              {/* Recipient Selection */}
+              {sendToRecipient && (
+                <div className="mt-4 pt-4 border-t-2 border-indigo-200 space-y-4">
+                  {/* Recipient Type */}
+                  <div>
+                    <label className="block text-sm font-medium text-indigo-800 mb-2">Type de destinataire</label>
+                    <div className="grid grid-cols-2 gap-3">
+                      {['pole', 'filiale', 'service'].map(type => (
+                        <button
+                          key={type}
+                          onClick={() => {
+                            setRecipientType(type as any)
+                            setRecipientPole('')
+                            setRecipientFiliale('')
+                            setRecipientService('')
+                          }}
+                          className={`p-3 rounded-lg font-medium text-sm transition-all ${
+                            recipientType === type
+                              ? 'bg-indigo-600 text-white border-2 border-indigo-600'
+                              : 'bg-white text-indigo-700 border-2 border-indigo-300 hover:bg-indigo-50'
+                          }`}
+                        >
+                          {type === 'pole' ? '🌍 Pôle' : type === 'filiale' ? '🏢 Filiale' : '📂 Service'}
+                        </button>
+                      ))}
+                    </div>
+                  </div>
+
+                  {/* Recipient Selection based on type */}
+                  {recipientType === 'pole' && (
+                    <div>
+                      <label className="block text-sm font-medium text-indigo-800 mb-2">Pôle destinataire</label>
+                      <select
+                        value={recipientPole}
+                        onChange={(e) => setRecipientPole(e.target.value)}
+                        className="w-full px-4 py-3 border-2 border-indigo-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-indigo-600 focus:border-indigo-600 bg-white"
+                      >
+                        <option value="">Sélectionner un pôle...</option>
+                        {poles.map((p) => (
+                          <option key={p.id} value={p.id}>
+                            {p.name}
+                          </option>
+                        ))}
+                      </select>
+                    </div>
+                  )}
+
+                  {recipientType === 'filiale' && (
+                    <>
+                      <div>
+                        <label className="block text-sm font-medium text-indigo-800 mb-2">Pôle de la filiale</label>
+                        <select
+                          value={recipientPole}
+                          onChange={(e) => {
+                            setRecipientPole(e.target.value)
+                            setFiliales([])
+                            setRecipientFiliale('')
+                            if (e.target.value) {
+                              // Load filiales for this pole
+                              folderService.getFiliales(Number(e.target.value)).then(children => {
+                                setFiliales(children)
+                              })
+                            }
+                          }}
+                          className="w-full px-4 py-3 border-2 border-indigo-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-indigo-600 focus:border-indigo-600 bg-white"
+                        >
+                          <option value="">Sélectionner un pôle...</option>
+                          {poles.map((p) => (
+                            <option key={p.id} value={p.id}>
+                              {p.name}
+                            </option>
+                          ))}
+                        </select>
+                      </div>
+                      <div>
+                        <label className="block text-sm font-medium text-indigo-800 mb-2">Filiale destinataire</label>
+                        <select
+                          value={recipientFiliale}
+                          onChange={(e) => setRecipientFiliale(e.target.value)}
+                          disabled={!recipientPole}
+                          className="w-full px-4 py-3 border-2 border-indigo-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-indigo-600 focus:border-indigo-600 bg-white disabled:bg-gray-50 disabled:cursor-not-allowed"
+                        >
+                          <option value="">Sélectionner une filiale...</option>
+                          {filiales.map((f) => (
+                            <option key={f.id} value={f.id}>
+                              {f.name}
+                            </option>
+                          ))}
+                        </select>
+                      </div>
+                    </>
+                  )}
+
+                  {recipientType === 'service' && (
+                    <>
+                      <div>
+                        <label className="block text-sm font-medium text-indigo-800 mb-2">Pôle du service</label>
+                        <select
+                          value={recipientPole}
+                          onChange={(e) => {
+                            setRecipientPole(e.target.value)
+                            setFiliales([])
+                            setRecipientFiliale('')
+                            setServices([])
+                            setRecipientService('')
+                            if (e.target.value) {
+                              folderService.getFiliales(Number(e.target.value)).then(children => {
+                                setFiliales(children)
+                              })
+                            }
+                          }}
+                          className="w-full px-4 py-3 border-2 border-indigo-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-indigo-600 focus:border-indigo-600 bg-white"
+                        >
+                          <option value="">Sélectionner un pôle...</option>
+                          {poles.map((p) => (
+                            <option key={p.id} value={p.id}>
+                              {p.name}
+                            </option>
+                          ))}
+                        </select>
+                      </div>
+                      <div>
+                        <label className="block text-sm font-medium text-indigo-800 mb-2">Filiale du service</label>
+                        <select
+                          value={recipientFiliale}
+                          onChange={(e) => {
+                            setRecipientFiliale(e.target.value)
+                            setServices([])
+                            setRecipientService('')
+                            if (e.target.value) {
+                              folderService.getServices(Number(e.target.value)).then((children: any) => {
+                                setServices(children)
+                              })
+                            }
+                          }}
+                          disabled={!recipientPole}
+                          className="w-full px-4 py-3 border-2 border-indigo-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-indigo-600 focus:border-indigo-600 bg-white disabled:bg-gray-50 disabled:cursor-not-allowed"
+                        >
+                          <option value="">Sélectionner une filiale...</option>
+                          {filiales.map((f) => (
+                            <option key={f.id} value={f.id}>
+                              {f.name}
+                            </option>
+                          ))}
+                        </select>
+                      </div>
+                      <div>
+                        <label className="block text-sm font-medium text-indigo-800 mb-2">Service destinataire</label>
+                        <select
+                          value={recipientService}
+                          onChange={(e) => setRecipientService(e.target.value)}
+                          disabled={!recipientFiliale}
+                          className="w-full px-4 py-3 border-2 border-indigo-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-indigo-600 focus:border-indigo-600 bg-white disabled:bg-gray-50 disabled:cursor-not-allowed"
+                        >
+                          <option value="">Sélectionner un service...</option>
+                          {services.map((s) => (
+                            <option key={s.id} value={s.id}>
+                              {s.name}
+                            </option>
+                          ))}
+                        </select>
+                      </div>
+                    </>
+                  )}
+                </div>
+              )}
             </div>
 
             {/* Pôle */}
