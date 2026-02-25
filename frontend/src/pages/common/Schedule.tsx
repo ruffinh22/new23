@@ -1,12 +1,15 @@
-import React, { useState } from 'react'
+import React, { useState, useEffect } from 'react'
 import { Layout } from '@/components/common'
-import { Calendar, Clock, MapPin, Users, Plus, Edit2, Trash2, CheckCircle2, AlertCircle, ChevronLeft, ChevronRight } from 'lucide-react'
+import { Calendar, Clock, MapPin, Users, Plus, Edit2, Trash2, CheckCircle2, AlertCircle, ChevronLeft, ChevronRight, Mail } from 'lucide-react'
 import { apiClient } from '@/services'
+import { useAuth } from '@/contexts/AuthContext'
+import { EmailScheduling } from '@/pages/admin/EmailScheduling'
+import { EventsManagement } from '@/pages/admin/EventsManagement'
 
 interface ScheduleEvent {
-  id: number
+  id: number | string
   title: string
-  date: Date
+  date: Date | string
   startTime: string
   endTime: string
   type: 'meeting' | 'task' | 'deadline' | 'review'
@@ -14,21 +17,13 @@ interface ScheduleEvent {
   location?: string
   attendees?: string[]
   description?: string
+  event_date?: string
+  start_time?: string
+  end_time?: string
 }
 
-const MOCK_EVENTS: ScheduleEvent[] = [
-  {
-    id: 1,
-    title: 'Réunion avec l\'équipe Marketing',
-    date: new Date(2026, 0, 28),
-    startTime: '09:00',
-    endTime: '10:30',
-    type: 'meeting',
-    status: 'pending',
-    location: 'Salle A - Étage 2',
-    attendees: ['Alice Dupont', 'Bob Martin', 'Carol Brown'],
-    description: 'Discussion sur la stratégie Q1'
-  },
+/*
+// const MOCK_EVENTS: ScheduleEvent[] = [
   {
     id: 2,
     title: 'Révision des documents de routage',
@@ -61,11 +56,16 @@ const MOCK_EVENTS: ScheduleEvent[] = [
     description: 'Formation sur les nouveaux workflows',
   },
 ]
+*/
 
 const DAYS_OF_WEEK = ['Lun', 'Mar', 'Mer', 'Jeu', 'Ven', 'Sam', 'Dim']
 const MONTHS = ['Janvier', 'Février', 'Mars', 'Avril', 'Mai', 'Juin', 'Juillet', 'Août', 'Septembre', 'Octobre', 'Novembre', 'Décembre']
 
 export const Schedule: React.FC = () => {
+  const { user } = useAuth()
+  const [showEmailSchedulingModal, setShowEmailSchedulingModal] = useState(false)
+  const [showEventsManagementModal, setShowEventsManagementModal] = useState(false)
+  const [events, setEvents] = useState<ScheduleEvent[]>([])
   const [currentDate, setCurrentDate] = useState(new Date(2026, 0, 28))
   const [viewMode, setViewMode] = useState<'month' | 'week' | 'day'>('month')
   const [selectedEvent, setSelectedEvent] = useState<ScheduleEvent | null>(null)
@@ -83,6 +83,33 @@ export const Schedule: React.FC = () => {
     description: '',
     attendees: '',
   })
+
+  // Charger les événements depuis l'API
+  useEffect(() => {
+    fetchEvents()
+  }, [])
+
+  const fetchEvents = async () => {
+    try {
+      const response = await apiClient.get('/scheduling/events/')
+      const data = response.data.results || response.data
+      const formattedEvents = data.map((event: any) => ({
+        id: event.id,
+        title: event.title,
+        date: new Date(event.event_date),
+        startTime: event.start_time || '09:00',
+        endTime: event.end_time || '10:00',
+        type: 'meeting' as const,
+        status: 'pending' as const,
+        location: event.location,
+        attendees: event.attendees || [],
+        description: event.description,
+      }))
+      setEvents(formattedEvents)
+    } catch (err) {
+      console.error('Error fetching events:', err)
+    }
+  }
 
   const handleCreateEvent = async () => {
     if (!newEventForm.title || !newEventForm.date || !newEventForm.startTime || !newEventForm.endTime) {
@@ -193,9 +220,10 @@ export const Schedule: React.FC = () => {
   }
 
   const getEventsForDate = (date: Date) => {
-    return MOCK_EVENTS.filter(event => 
-      event.date.toDateString() === date.toDateString()
-    )
+    return events.filter(event => {
+      const eventDate = event.date instanceof Date ? event.date : new Date(event.date)
+      return eventDate.toDateString() === date.toDateString()
+    })
   }
 
   return (
@@ -207,12 +235,24 @@ export const Schedule: React.FC = () => {
             <h1 className="text-4xl font-bold text-secondary-900 mb-2">Calendrier & Planning</h1>
             <p className="text-secondary-600 font-medium">Gérez vos rendez-vous et tâches planifiées</p>
           </div>
-          <button
-            onClick={() => setShowNewEventModal(true)}
-            className="btn-primary inline-flex items-center gap-2 transform hover:scale-105"
-          >
-            <Plus size={20} /> Nouvel événement
-          </button>
+          <div className="flex gap-2 flex-wrap">
+            {(user?.is_staff || (user?.role && ['POLE_MANAGER', 'FILIALE_MANAGER', 'SERVICE_MANAGER'].includes(user.role))) && (
+              <button
+                onClick={() => setShowEmailSchedulingModal(true)}
+                className="inline-flex items-center gap-2 transform hover:scale-105 bg-red-600 text-white px-4 py-2 rounded-lg font-semibold hover:bg-red-700 transition-colors"
+              >
+                <Mail size={20} /> Planification Emails
+              </button>
+            )}
+            {(user?.is_staff || (user?.role && ['POLE_MANAGER', 'FILIALE_MANAGER', 'SERVICE_MANAGER'].includes(user.role))) && (
+              <button
+                onClick={() => setShowEventsManagementModal(true)}
+                className="inline-flex items-center gap-2 transform hover:scale-105 bg-red-600 text-white px-4 py-2 rounded-lg font-semibold hover:bg-red-700 transition-colors"
+              >
+                <Calendar size={20} /> Gestion Événements
+              </button>
+            )}
+          </div>
         </div>
 
         {/* View Mode Selector */}
@@ -320,73 +360,89 @@ export const Schedule: React.FC = () => {
           </div>
 
           <div className="divide-y divide-secondary-200">
-            {MOCK_EVENTS.sort((a, b) => a.date.getTime() - b.date.getTime()).map(event => (
-              <div
-                key={event.id}
-                className="p-6 hover:bg-secondary-50 transition-all group cursor-pointer"
-                onClick={() => setSelectedEvent(event)}
-              >
-                <div className="flex items-start justify-between gap-4">
-                  <div className="flex items-start gap-4 flex-1">
-                    {/* Type Icon */}
-                    <div className={`w-12 h-12 rounded-lg flex items-center justify-center flex-shrink-0 ${getTypeColor(event.type)}`}>
-                      {getTypeIcon(event.type)}
-                    </div>
-
-                    {/* Event Details */}
-                    <div className="flex-1">
-                      <div className="flex items-center gap-3 mb-2 flex-wrap">
-                        <h4 className={`text-lg font-bold ${getStatusColor(event.status)}`}>
-                          {event.title}
-                        </h4>
-                        <span className={`text-xs px-3 py-1 rounded-full font-bold border ${getTypeColor(event.type)}`}>
-                          {getTypeLabel(event.type)}
-                        </span>
-                      </div>
-
-                      <div className="grid grid-cols-2 md:grid-cols-4 gap-4 text-sm">
-                        <div className="flex items-center gap-2 text-secondary-600">
-                          <Calendar size={16} />
-                          <span>{event.date.toLocaleDateString('fr-FR')}</span>
-                        </div>
-                        <div className="flex items-center gap-2 text-secondary-600">
-                          <Clock size={16} />
-                          <span>{event.startTime} - {event.endTime}</span>
-                        </div>
-                        {event.location && (
-                          <div className="flex items-center gap-2 text-secondary-600">
-                            <MapPin size={16} />
-                            <span>{event.location}</span>
-                          </div>
-                        )}
-                        {event.attendees && (
-                          <div className="flex items-center gap-2 text-secondary-600">
-                            <Users size={16} />
-                            <span>{event.attendees.length} personne(s)</span>
-                          </div>
-                        )}
-                      </div>
-
-                      {event.description && (
-                        <p className="mt-3 text-secondary-700 text-sm bg-secondary-50 p-3 rounded">
-                          {event.description}
-                        </p>
-                      )}
-                    </div>
-                  </div>
-
-                  {/* Actions */}
-                  <div className="flex gap-2 opacity-0 group-hover:opacity-100 transition-all">
-                    <button className="p-2 hover:bg-primary-100 rounded-lg text-primary-600 transition transform hover:scale-110">
-                      <Edit2 size={18} />
-                    </button>
-                    <button className="p-2 hover:bg-error-100 rounded-lg text-error-600 transition transform hover:scale-110">
-                      <Trash2 size={18} />
-                    </button>
-                  </div>
-                </div>
+            {events.length === 0 ? (
+              <div className="p-6 text-center text-secondary-600">
+                <Calendar size={32} className="mx-auto mb-2 opacity-50" />
+                <p className="font-semibold">Aucun événement prévu</p>
               </div>
-            ))}
+            ) : (
+              events.sort((a, b) => {
+                const dateA = a.date instanceof Date ? a.date : new Date(a.date)
+                const dateB = b.date instanceof Date ? b.date : new Date(b.date)
+                return dateA.getTime() - dateB.getTime()
+              }).map(event => {
+                const eventDate = event.date instanceof Date ? event.date : new Date(event.date)
+                const attendeeCount = Array.isArray(event.attendees) ? event.attendees.length : 0
+                
+                return (
+                  <div
+                    key={event.id}
+                    className="p-6 hover:bg-secondary-50 transition-all group cursor-pointer"
+                    onClick={() => setSelectedEvent(event)}
+                  >
+                    <div className="flex items-start justify-between gap-4">
+                      <div className="flex items-start gap-4 flex-1">
+                        {/* Type Icon */}
+                        <div className={`w-12 h-12 rounded-lg flex items-center justify-center flex-shrink-0 ${getTypeColor(event.type)}`}>
+                          {getTypeIcon(event.type)}
+                        </div>
+
+                        {/* Event Details */}
+                        <div className="flex-1">
+                          <div className="flex items-center gap-3 mb-2 flex-wrap">
+                            <h4 className={`text-lg font-bold ${getStatusColor(event.status)}`}>
+                              {event.title}
+                            </h4>
+                            <span className={`text-xs px-3 py-1 rounded-full font-bold border ${getTypeColor(event.type)}`}>
+                              {getTypeLabel(event.type)}
+                            </span>
+                          </div>
+
+                          <div className="grid grid-cols-2 md:grid-cols-4 gap-4 text-sm">
+                            <div className="flex items-center gap-2 text-secondary-600">
+                              <Calendar size={16} />
+                              <span>{eventDate.toLocaleDateString('fr-FR')}</span>
+                            </div>
+                            <div className="flex items-center gap-2 text-secondary-600">
+                              <Clock size={16} />
+                              <span>{event.startTime} - {event.endTime}</span>
+                            </div>
+                            {event.location && (
+                              <div className="flex items-center gap-2 text-secondary-600">
+                                <MapPin size={16} />
+                                <span>{event.location}</span>
+                              </div>
+                            )}
+                            {attendeeCount > 0 && (
+                              <div className="flex items-center gap-2 text-secondary-600">
+                                <Users size={16} />
+                                <span>{attendeeCount} personne(s)</span>
+                              </div>
+                            )}
+                          </div>
+
+                          {event.description && (
+                            <p className="mt-3 text-secondary-700 text-sm bg-secondary-50 p-3 rounded">
+                              {event.description}
+                            </p>
+                          )}
+                        </div>
+                      </div>
+
+                      {/* Actions */}
+                      <div className="flex gap-2 opacity-0 group-hover:opacity-100 transition-all">
+                        <button className="p-2 hover:bg-primary-100 rounded-lg text-primary-600 transition transform hover:scale-110">
+                          <Edit2 size={18} />
+                        </button>
+                        <button className="p-2 hover:bg-error-100 rounded-lg text-error-600 transition transform hover:scale-110">
+                          <Trash2 size={18} />
+                        </button>
+                      </div>
+                    </div>
+                  </div>
+                )
+              })
+            )}
           </div>
         </div>
 
@@ -408,7 +464,7 @@ export const Schedule: React.FC = () => {
                 <div className="grid grid-cols-2 gap-6">
                   <div>
                     <p className="text-xs text-secondary-600 font-bold uppercase mb-2">Date</p>
-                    <p className="font-bold text-secondary-900">{selectedEvent.date.toLocaleDateString('fr-FR')}</p>
+                    <p className="font-bold text-secondary-900">{typeof selectedEvent.date === 'string' ? new Date(selectedEvent.date).toLocaleDateString('fr-FR') : selectedEvent.date.toLocaleDateString('fr-FR')}</p>
                   </div>
                   <div>
                     <p className="text-xs text-secondary-600 font-bold uppercase mb-2">Heure</p>
@@ -464,6 +520,50 @@ export const Schedule: React.FC = () => {
           </div>
         )}
 
+        {/* Email Scheduling Modal */}
+        {showEmailSchedulingModal && (
+          <div className="fixed inset-0 bg-black/50 backdrop-blur-sm flex items-center justify-center z-50 p-4">
+            <div className="card max-w-6xl w-full max-h-[90vh] overflow-y-auto">
+              <div className="bg-gradient-to-r from-primary-500 to-primary-600 px-6 py-4 flex justify-between items-center sticky top-0">
+                <h3 className="text-2xl font-bold text-white flex items-center gap-2">
+                  <Mail size={24} /> Planification Emails
+                </h3>
+                <button
+                  onClick={() => setShowEmailSchedulingModal(false)}
+                  className="text-white hover:bg-primary-600 p-2 rounded-lg transition"
+                >
+                  ✕
+                </button>
+              </div>
+              <div className="p-6">
+                <EmailScheduling />
+              </div>
+            </div>
+          </div>
+        )}
+
+        {/* Events Management Modal */}
+        {showEventsManagementModal && (
+          <div className="fixed inset-0 bg-black/50 backdrop-blur-sm flex items-center justify-center z-50 p-4">
+            <div className="card max-w-6xl w-full max-h-[90vh] overflow-y-auto">
+              <div className="bg-gradient-to-r from-primary-500 to-primary-600 px-6 py-4 flex justify-between items-center sticky top-0">
+                <h3 className="text-2xl font-bold text-white flex items-center gap-2">
+                  <Calendar size={24} /> Gestion Événements
+                </h3>
+                <button
+                  onClick={() => setShowEventsManagementModal(false)}
+                  className="text-white hover:bg-primary-600 p-2 rounded-lg transition"
+                >
+                  ✕
+                </button>
+              </div>
+              <div className="p-6">
+                <EventsManagement />
+              </div>
+            </div>
+          </div>
+        )}
+
         {/* New Event Modal */}
         {showNewEventModal && (
           <div className="fixed inset-0 bg-black/50 backdrop-blur-sm flex items-center justify-center z-50 p-4">
@@ -480,7 +580,7 @@ export const Schedule: React.FC = () => {
                 </button>
               </div>
 
-              <div className="p-8 space-y-6">
+              <div className="p-6 space-y-4">
                 {/* Success Message */}
                 {success && (
                   <div className="alert alert-success animate-slide-up">
@@ -498,102 +598,101 @@ export const Schedule: React.FC = () => {
                     <p>{error}</p>
                   </div>
                 )}
-                {/* Title */}
-                <div className="space-y-2">
-                  <label className="block text-sm font-bold text-secondary-700">Titre *</label>
-                  <input
-                    type="text"
-                    placeholder="Ex: Réunion d'équipe"
-                    value={newEventForm.title}
-                    onChange={(e) => setNewEventForm({ ...newEventForm, title: e.target.value })}
-                    className="input focus:ring-primary-500"
-                  />
+
+                {/* Title and Type on same line */}
+                <div className="grid grid-cols-2 gap-4">
+                  <div className="space-y-1">
+                    <label className="block text-sm font-bold text-secondary-700">Titre *</label>
+                    <input
+                      type="text"
+                      placeholder="Titre de l'événement"
+                      value={newEventForm.title}
+                      onChange={(e) => setNewEventForm({ ...newEventForm, title: e.target.value })}
+                      className="w-full px-3 py-2 border border-secondary-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-primary-500 focus:border-transparent"
+                    />
+                  </div>
+                  <div className="space-y-1">
+                    <label className="block text-sm font-bold text-secondary-700">Type *</label>
+                    <select
+                      value={newEventForm.type}
+                      onChange={(e) => setNewEventForm({ ...newEventForm, type: e.target.value as any })}
+                      className="w-full px-3 py-2 border border-secondary-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-primary-500 focus:border-transparent cursor-pointer"
+                    >
+                      <option value="meeting">🔵 Réunion</option>
+                      <option value="task">🟣 Tâche</option>
+                      <option value="deadline">🔴 Échéance</option>
+                      <option value="review">🟢 Révision</option>
+                    </select>
+                  </div>
                 </div>
 
-                {/* Type */}
-                <div className="space-y-2">
-                  <label className="block text-sm font-bold text-secondary-700">Type d'événement *</label>
-                  <select
-                    value={newEventForm.type}
-                    onChange={(e) => setNewEventForm({ ...newEventForm, type: e.target.value as any })}
-                    className="input cursor-pointer focus:ring-primary-500"
-                  >
-                    <option value="meeting">🔵 Réunion</option>
-                    <option value="task">🟣 Tâche</option>
-                    <option value="deadline">🔴 Échéance</option>
-                    <option value="review">🟢 Révision</option>
-                  </select>
-                </div>
-
-                {/* Date and Time */}
-                <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
-                  <div className="space-y-2">
+                {/* Date, Location, Time on same line */}
+                <div className="grid grid-cols-3 gap-4">
+                  <div className="space-y-1">
                     <label className="block text-sm font-bold text-secondary-700">Date *</label>
                     <input
                       type="date"
                       value={newEventForm.date}
                       onChange={(e) => setNewEventForm({ ...newEventForm, date: e.target.value })}
-                      className="input focus:ring-primary-500"
+                      className="w-full px-3 py-2 border border-secondary-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-primary-500 focus:border-transparent"
                     />
                   </div>
-                  <div className="space-y-2">
-                    <label className="block text-sm font-bold text-secondary-700">Début *</label>
+                  <div className="space-y-1">
+                    <label className="block text-sm font-bold text-secondary-700">Lieu</label>
                     <input
-                      type="time"
-                      value={newEventForm.startTime}
-                      onChange={(e) => setNewEventForm({ ...newEventForm, startTime: e.target.value })}
-                      className="input focus:ring-primary-500"
+                      type="text"
+                      placeholder="Lieu de l'événement"
+                      value={newEventForm.location}
+                      onChange={(e) => setNewEventForm({ ...newEventForm, location: e.target.value })}
+                      className="w-full px-3 py-2 border border-secondary-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-primary-500 focus:border-transparent"
                     />
                   </div>
-                  <div className="space-y-2">
-                    <label className="block text-sm font-bold text-secondary-700">Fin *</label>
-                    <input
-                      type="time"
-                      value={newEventForm.endTime}
-                      onChange={(e) => setNewEventForm({ ...newEventForm, endTime: e.target.value })}
-                      className="input focus:ring-primary-500"
-                    />
+                  <div className="space-y-1">
+                    <label className="block text-sm font-bold text-secondary-700">Début / Fin</label>
+                    <div className="flex gap-2">
+                      <input
+                        type="time"
+                        value={newEventForm.startTime}
+                        onChange={(e) => setNewEventForm({ ...newEventForm, startTime: e.target.value })}
+                        className="flex-1 px-2 py-2 border border-secondary-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-primary-500 focus:border-transparent text-sm"
+                        placeholder="--:--"
+                      />
+                      <input
+                        type="time"
+                        value={newEventForm.endTime}
+                        onChange={(e) => setNewEventForm({ ...newEventForm, endTime: e.target.value })}
+                        className="flex-1 px-2 py-2 border border-secondary-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-primary-500 focus:border-transparent text-sm"
+                        placeholder="--:--"
+                      />
+                    </div>
                   </div>
-                </div>
-
-                {/* Location */}
-                <div className="space-y-2">
-                  <label className="block text-sm font-bold text-secondary-700">Lieu (optionnel)</label>
-                  <input
-                    type="text"
-                    placeholder="Ex: Salle A - Étage 2"
-                    value={newEventForm.location}
-                    onChange={(e) => setNewEventForm({ ...newEventForm, location: e.target.value })}
-                    className="input focus:ring-primary-500"
-                  />
                 </div>
 
                 {/* Description */}
-                <div className="space-y-2">
-                  <label className="block text-sm font-bold text-secondary-700">Description (optionnel)</label>
+                <div className="space-y-1">
+                  <label className="block text-sm font-bold text-secondary-700">Description</label>
                   <textarea
-                    placeholder="Détails de l'événement..."
+                    placeholder="Description de l'événement..."
                     value={newEventForm.description}
                     onChange={(e) => setNewEventForm({ ...newEventForm, description: e.target.value })}
-                    className="textarea focus:ring-primary-500 h-24"
+                    className="w-full px-3 py-2 border border-secondary-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-primary-500 focus:border-transparent h-16 resize-none"
                   />
                 </div>
 
                 {/* Attendees */}
-                <div className="space-y-2">
+                <div className="space-y-1">
                   <label className="block text-sm font-bold text-secondary-700">Participants (optionnel)</label>
                   <input
                     type="text"
                     placeholder="Noms séparés par des virgules"
                     value={newEventForm.attendees}
                     onChange={(e) => setNewEventForm({ ...newEventForm, attendees: e.target.value })}
-                    className="input focus:ring-primary-500"
+                    className="w-full px-3 py-2 border border-secondary-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-primary-500 focus:border-transparent"
                   />
-                  <p className="text-xs text-secondary-500">Ex: Alice Dupont, Bob Martin, Carol Brown</p>
                 </div>
 
                 {/* Actions */}
-                <div className="flex gap-3 pt-6 border-t border-secondary-200">
+                <div className="flex gap-3 pt-4 border-t border-secondary-200">
                   <button
                     onClick={handleCreateEvent}
                     disabled={loading}

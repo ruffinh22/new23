@@ -9,11 +9,17 @@ import { folderService } from '@/services/folderService'
 import { Folder } from '@/types/document'
 
 interface DocumentType {
-  document_type: string
-  document_type_display: string
-  description: string
-  target_folder?: string
-  target_folder_id?: number
+  id: number
+  name: string
+  display_name: string
+  description?: string
+  icon?: string
+  color?: string
+  allowed_formats?: string
+  allowed_formats_list?: string[]
+  max_file_size_mb?: number
+  requires_excel?: boolean
+  is_active?: boolean
 }
 
 interface DocumentUploadProps {
@@ -50,6 +56,7 @@ export const DocumentUpload: React.FC<DocumentUploadProps> = ({ isOpen = false, 
   const [filiales, setFiliales] = useState<Folder[]>([])
   const [services, setServices] = useState<Folder[]>([])
   const [documentTypes, setDocumentTypes] = useState<DocumentType[]>([])
+  const [users, setUsers] = useState<any[]>([])
 
   // UI states
   const [error, setError] = useState<string>('')
@@ -189,26 +196,37 @@ export const DocumentUpload: React.FC<DocumentUploadProps> = ({ isOpen = false, 
   const loadDocumentTypes = async () => {
     try {
       console.log('[DocumentUpload] Loading document types...')
-      const isAdminUser = isAdmin(user)
       
-      let endpoint = ''
-      if (isAdminUser) {
-        endpoint = '/routing-rules/document-types/all_types/'
-      } else if (service) {
-        endpoint = `/routing-rules/document-types/by_service/?service=${service}`
-      } else {
-        endpoint = '/routing-rules/document-types/all_types/'
+      // Load from the new documentType endpoint
+      const response = await apiClient.get('/documents/types/')
+      let types: DocumentType[] = []
+      
+      if (Array.isArray(response.data)) {
+        types = response.data.map((docType: any) => ({
+          id: docType.id,
+          name: docType.name,
+          display_name: docType.display_name,
+          description: docType.description || '',
+          icon: docType.icon || 'file',
+          color: docType.color || '#6B7280'
+        }))
+      } else if (response.data?.results) {
+        types = response.data.results.map((docType: any) => ({
+          id: docType.id,
+          name: docType.name,
+          display_name: docType.display_name,
+          description: docType.description || '',
+          icon: docType.icon || 'file',
+          color: docType.color || '#6B7280'
+        }))
       }
-
-      const response = await apiClient.get(endpoint)
-      let types = response.data.document_types || []
       
       if (types.length === 0) {
         types = [{
-          document_type: 'AUTRE',
-          document_type_display: 'Autre',
-          description: 'Type par défaut',
-          target_folder: 'Defaut'
+          id: 0,
+          name: 'AUTRE',
+          display_name: 'Autre',
+          description: 'Type par défaut'
         }]
       }
       
@@ -216,7 +234,38 @@ export const DocumentUpload: React.FC<DocumentUploadProps> = ({ isOpen = false, 
       console.log(`[DocumentUpload] Loaded ${types.length} document types`)
     } catch (err: any) {
       console.error('[DocumentUpload] Error loading document types:', err)
+      // Fallback to default type if API fails
+      setDocumentTypes([{
+        id: 0,
+        name: 'AUTRE',
+        display_name: 'Autre',
+        description: 'Type par défaut'
+      }])
       setError('Erreur lors du chargement des types de documents')
+    }
+  }
+
+  const loadUsers = async () => {
+    try {
+      console.log('[DocumentUpload] Loading users...')
+      const response = await apiClient.get('/auth/users/')
+      const usersData = Array.isArray(response.data) ? response.data : response.data?.results || []
+      
+      // Filtrer pour exclure l'utilisateur courant
+      const filteredUsers = usersData.filter((u: any) => u.id !== user?.id)
+      
+      // Trier alphabétiquement par nom
+      filteredUsers.sort((a: any, b: any) => {
+        const nameA = `${a.first_name} ${a.last_name}`.trim()
+        const nameB = `${b.first_name} ${b.last_name}`.trim()
+        return nameA.localeCompare(nameB)
+      })
+      
+      setUsers(filteredUsers)
+      console.log(`[DocumentUpload] Loaded ${filteredUsers.length} users`)
+    } catch (err: any) {
+      console.error('[DocumentUpload] Error loading users:', err)
+      setError('Erreur lors du chargement des utilisateurs')
     }
   }
 
@@ -274,6 +323,10 @@ export const DocumentUpload: React.FC<DocumentUploadProps> = ({ isOpen = false, 
         setError('❌ Veuillez sélectionner un service destinataire')
         return
       }
+      if (recipientType === 'user' && !recipientUser) {
+        setError('❌ Veuillez sélectionner un utilisateur destinataire')
+        return
+      }
     }
 
     setIsLoading(true)
@@ -284,12 +337,25 @@ export const DocumentUpload: React.FC<DocumentUploadProps> = ({ isOpen = false, 
     formData.append('description', description)
     formData.append('agent_id', String(user?.id || ''))
     
-    // Service is optional - only add if provided
-    if (service) {
-      formData.append('folder_id', String(service))
+    // DEBUG: Log all form data
+    console.log('[DocumentUpload] FormData values:')
+    console.log('  - title:', title)
+    console.log('  - document_type:', documentType, typeof documentType)
+    console.log('  - file:', file?.name)
+    console.log('  - agent_id:', user?.id)
+    
+    // Service is optional - only add if provided (but NOT when sending to recipient)
+    if (!sendToRecipient) {
+      if (service) {
+        formData.append('folder_id', String(service))
+        console.log('  - folder_id (service):', service)
+      } else {
+        // Use filiale as fallback if service not assigned
+        formData.append('folder_id', String(filiale))
+        console.log('  - folder_id (filiale):', filiale)
+      }
     } else {
-      // Use filiale as fallback if service not assigned
-      formData.append('folder_id', String(filiale))
+      console.log('  - sendToRecipient: true (folder_id will be determined by recipient)')
     }
 
     // Add recipient info if sending to recipient
@@ -299,10 +365,16 @@ export const DocumentUpload: React.FC<DocumentUploadProps> = ({ isOpen = false, 
       
       if (recipientType === 'pole') {
         formData.append('recipient_pole_id', String(recipientPole))
+        console.log('  - recipient_pole_id:', recipientPole)
       } else if (recipientType === 'filiale') {
         formData.append('recipient_filiale_id', String(recipientFiliale))
+        console.log('  - recipient_filiale_id:', recipientFiliale)
       } else if (recipientType === 'service') {
         formData.append('recipient_service_id', String(recipientService))
+        console.log('  - recipient_service_id:', recipientService)
+      } else if (recipientType === 'user') {
+        formData.append('recipient_user_id', String(recipientUser))
+        console.log('  - recipient_user_id:', recipientUser)
       }
     }
 
@@ -320,6 +392,12 @@ export const DocumentUpload: React.FC<DocumentUploadProps> = ({ isOpen = false, 
         setPole('')
         setFiliale('')
         setService('')
+        setSendToRecipient(false)
+        setRecipientType('pole')
+        setRecipientPole('')
+        setRecipientFiliale('')
+        setRecipientService('')
+        setRecipientUser('')
 
         if (onUploadSuccess) {
           onUploadSuccess(response.data)
@@ -335,9 +413,16 @@ export const DocumentUpload: React.FC<DocumentUploadProps> = ({ isOpen = false, 
       console.error('[DocumentUpload] Upload error:', err)
       let errorMessage = '❌ Erreur lors de l\'upload du document'
       
-      // Parse error details
+      // Log response data for debugging
+      if (err.response?.data) {
+        console.error('[DocumentUpload] Response error data:', JSON.stringify(err.response.data, null, 2))
+      }
+      
+      // Parse error details - handle all possible error fields
       if (err.response?.data?.detail) {
         errorMessage = '❌ ' + String(err.response.data.detail)
+      } else if (err.response?.data?.document_type) {
+        errorMessage = '❌ Erreur type document: ' + String(err.response.data.document_type[0])
       } else if (err.response?.data?.folder_id) {
         errorMessage = '❌ Erreur dossier: ' + String(err.response.data.folder_id[0])
       } else if (err.response?.data?.file) {
@@ -345,7 +430,11 @@ export const DocumentUpload: React.FC<DocumentUploadProps> = ({ isOpen = false, 
       } else if (err.response?.data?.title) {
         errorMessage = '❌ Erreur titre: ' + String(err.response.data.title[0])
       } else if (err.response?.status === 400) {
-        errorMessage = '❌ Données invalides - Veuillez vérifier vos saisies'
+        // Get all errors from response
+        const allErrors = Object.entries(err.response.data || {})
+          .map(([key, value]: [string, any]) => `${key}: ${value?.[0] || value}`)
+          .join(', ')
+        errorMessage = allErrors ? `❌ ${allErrors}` : '❌ Données invalides - Veuillez vérifier vos saisies'
       } else if (err.response?.status === 403) {
         errorMessage = '❌ Accès refusé - Vous n\'avez pas la permission'
       } else if (err.response?.status === 404) {
@@ -392,10 +481,56 @@ export const DocumentUpload: React.FC<DocumentUploadProps> = ({ isOpen = false, 
 
           <div className="mb-6 p-4 bg-blue-50 border-2 border-blue-300 rounded-lg">
             <h3 className="font-bold text-blue-800 mb-2">📁 Structure des dossiers:</h3>
-            <p className="text-sm text-blue-700">
-              Le document sera organisé selon sa Filiale → Service (si assigné) → Type de Document. 
-              Cette structure garantit une classification cohérente et facile à naviguer.
-            </p>
+            {!sendToRecipient ? (
+              <div className="text-sm text-blue-700 space-y-2">
+                <p>
+                  Le document sera organisé selon:
+                </p>
+                <p className="ml-4 font-mono bg-blue-100 p-2 rounded">
+                  Filiale {filiale ? `(${user?.branch_name || filiale})` : ''} 
+                  {service ? ` → Service (${user?.service_name || service})` : ''} 
+                  → Type de Document {documentType ? `(${documentTypes.find(t => String(t.id) === documentType)?.display_name || documentType})` : ''}
+                </p>
+              </div>
+            ) : (
+              <div className="text-sm text-blue-700 space-y-2">
+                <p>Le document sera envoyé vers:</p>
+                {recipientType === 'pole' && (
+                  <p className="ml-4 font-mono bg-blue-100 p-2 rounded">
+                    Pôle {recipientPole ? `(${poles.find(p => p.id == recipientPole)?.name})` : '(non sélectionné)'} 
+                    → Type de Document {documentType ? `(${documentTypes.find(t => String(t.id) === documentType)?.display_name})` : ''}
+                  </p>
+                )}
+                {recipientType === 'filiale' && (
+                  <p className="ml-4 font-mono bg-blue-100 p-2 rounded">
+                    Pôle {recipientPole ? `(${poles.find(p => p.id == recipientPole)?.name})` : ''} 
+                    → Filiale {recipientFiliale ? `(${filiales.find(f => f.id == recipientFiliale)?.name})` : '(non sélectionné)'} 
+                    → Type de Document {documentType ? `(${documentTypes.find(t => String(t.id) === documentType)?.display_name})` : ''}
+                  </p>
+                )}
+                {recipientType === 'service' && (
+                  <p className="ml-4 font-mono bg-blue-100 p-2 rounded">
+                    Pôle {recipientPole ? `(${poles.find(p => p.id == recipientPole)?.name})` : ''} 
+                    → Filiale {recipientFiliale ? `(${filiales.find(f => f.id == recipientFiliale)?.name})` : ''} 
+                    → Service {recipientService ? `(${services.find(s => s.id == recipientService)?.name})` : '(non sélectionné)'} 
+                    → Type de Document {documentType ? `(${documentTypes.find(t => String(t.id) === documentType)?.display_name})` : ''}
+                  </p>
+                )}
+                {recipientType === 'user' && (
+                  <p className="ml-4 font-mono bg-blue-100 p-2 rounded">
+                    {recipientUser ? (
+                      <>
+                        Pôle (de {users.find(u => u.id == recipientUser)?.first_name} {users.find(u => u.id == recipientUser)?.last_name}) 
+                        → Filiale → Service 
+                        → Type de Document {documentType ? `(${documentTypes.find(t => String(t.id) === documentType)?.display_name})` : ''}
+                      </>
+                    ) : (
+                      'Pôle (de l\'utilisateur) → Filiale → Service → Type de Document (non sélectionné)'
+                    )}
+                  </p>
+                )}
+              </div>
+            )}
           </div>
 
           <div className="space-y-6">
@@ -403,6 +538,9 @@ export const DocumentUpload: React.FC<DocumentUploadProps> = ({ isOpen = false, 
             <div>
               <label className="block text-sm font-medium text-gray-700 mb-2">Titre du document *</label>
               <Input placeholder="Ex: Demande de congé janvier 2026" value={title} onChange={(e) => setTitle(e.target.value)} />
+              <p className={`text-xs mt-2 ${title.trim().length < 3 ? 'text-red-600' : 'text-gray-500'}`}>
+                {title.trim().length < 3 ? '⚠️ Minimum 3 caractères requis' : '✓ Titre valide'}
+              </p>
             </div>
 
             {/* Send to Recipient Toggle */}
@@ -435,7 +573,7 @@ export const DocumentUpload: React.FC<DocumentUploadProps> = ({ isOpen = false, 
                   <div>
                     <label className="block text-sm font-medium text-indigo-800 mb-2">Type de destinataire</label>
                     <div className="grid grid-cols-2 gap-3">
-                      {['pole', 'filiale', 'service'].map(type => (
+                      {['pole', 'filiale', 'service', 'user'].map(type => (
                         <button
                           key={type}
                           onClick={() => {
@@ -443,6 +581,10 @@ export const DocumentUpload: React.FC<DocumentUploadProps> = ({ isOpen = false, 
                             setRecipientPole('')
                             setRecipientFiliale('')
                             setRecipientService('')
+                            setRecipientUser('')
+                            if (type === 'user' && users.length === 0) {
+                              loadUsers()
+                            }
                           }}
                           className={`p-3 rounded-lg font-medium text-sm transition-all ${
                             recipientType === type
@@ -450,7 +592,7 @@ export const DocumentUpload: React.FC<DocumentUploadProps> = ({ isOpen = false, 
                               : 'bg-white text-indigo-700 border-2 border-indigo-300 hover:bg-indigo-50'
                           }`}
                         >
-                          {type === 'pole' ? '🌍 Pôle' : type === 'filiale' ? '🏢 Filiale' : '📂 Service'}
+                          {type === 'pole' ? '🌍 Pôle' : type === 'filiale' ? '🏢 Filiale' : type === 'service' ? '📂 Service' : '👤 Utilisateur'}
                         </button>
                       ))}
                     </div>
@@ -592,6 +734,27 @@ export const DocumentUpload: React.FC<DocumentUploadProps> = ({ isOpen = false, 
                       </div>
                     </>
                   )}
+
+                  {recipientType === 'user' && (
+                    <div>
+                      <label className="block text-sm font-medium text-indigo-800 mb-2">Utilisateur destinataire</label>
+                      <select
+                        value={recipientUser}
+                        onChange={(e) => setRecipientUser(e.target.value)}
+                        className="w-full px-4 py-3 border-2 border-indigo-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-indigo-600 focus:border-indigo-600 bg-white"
+                      >
+                        <option value="">Sélectionner un utilisateur...</option>
+                        {users.map((u: any) => (
+                          <option key={u.id} value={u.id}>
+                            {u.first_name} {u.last_name} ({u.email})
+                          </option>
+                        ))}
+                      </select>
+                      {users.length === 0 && recipientType === 'user' && (
+                        <p className="text-xs text-indigo-600 mt-2">Chargement des utilisateurs...</p>
+                      )}
+                    </div>
+                  )}
                 </div>
               )}
             </div>
@@ -603,7 +766,8 @@ export const DocumentUpload: React.FC<DocumentUploadProps> = ({ isOpen = false, 
                 <select
                   value={pole}
                   onChange={(e) => setPole(e.target.value)}
-                  className="w-full px-4 py-3 border-2 border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-600 focus:border-blue-600"
+                  disabled={sendToRecipient}
+                  className="w-full px-4 py-3 border-2 border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-600 focus:border-blue-600 disabled:bg-gray-100 disabled:cursor-not-allowed"
                 >
                   <option value="">Sélectionner un pôle...</option>
                   {poles.map((p) => (
@@ -630,7 +794,7 @@ export const DocumentUpload: React.FC<DocumentUploadProps> = ({ isOpen = false, 
                 <select
                   value={filiale}
                   onChange={(e) => setFiliale(e.target.value)}
-                  disabled={!pole}
+                  disabled={!pole || sendToRecipient}
                   className="w-full px-4 py-3 border-2 border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-600 focus:border-blue-600 disabled:bg-gray-100 disabled:cursor-not-allowed"
                 >
                   <option value="">{pole ? 'Sélectionner une filiale...' : 'Sélectionnez un pôle d\'abord'}</option>
@@ -658,7 +822,7 @@ export const DocumentUpload: React.FC<DocumentUploadProps> = ({ isOpen = false, 
                 <select
                   value={service}
                   onChange={(e) => setService(e.target.value)}
-                  disabled={!filiale}
+                  disabled={!filiale || sendToRecipient}
                   className="w-full px-4 py-3 border-2 border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-600 focus:border-blue-600 disabled:bg-gray-100 disabled:cursor-not-allowed"
                 >
                   <option value="">{filiale ? 'Sélectionner un service...' : 'Sélectionnez une filiale d\'abord'}</option>
@@ -689,8 +853,8 @@ export const DocumentUpload: React.FC<DocumentUploadProps> = ({ isOpen = false, 
               >
                 <option value="">Sélectionner un type de document...</option>
                 {documentTypes.map((type) => (
-                  <option key={type.document_type} value={type.document_type}>
-                    {type.document_type_display}
+                  <option key={`type-${type.id}`} value={String(type.id)}>
+                    {type.display_name}
                   </option>
                 ))}
               </select>
@@ -760,15 +924,16 @@ export const DocumentUpload: React.FC<DocumentUploadProps> = ({ isOpen = false, 
                   validationIssues: validationIssues.length,
                   file: !!file,
                   title: !!title.trim(),
+                  titleLength: title.trim().length,
                   pole,
                   filiale,
                   documentType,
                 })
                 handleUpload()
               }}
-              disabled={isLoading || validationIssues.length > 0 || !file || !title || !pole || !filiale || !documentType}
+              disabled={isLoading || validationIssues.length > 0 || !file || title.trim().length < 3 || !pole || !filiale || !documentType}
               className="w-full"
-              title={validationIssues.length > 0 ? 'Profil incomplet - Contactez un administrateur' : !file ? 'Veuillez sélectionner un fichier' : !title ? 'Veuillez entrer un titre' : !documentType ? 'Veuillez sélectionner un type' : ''}
+              title={validationIssues.length > 0 ? 'Profil incomplet - Contactez un administrateur' : !file ? 'Veuillez sélectionner un fichier' : title.trim().length < 3 ? 'Le titre doit faire au moins 3 caractères' : !documentType ? 'Veuillez sélectionner un type' : ''}
             >
               {isLoading ? 'Upload en cours...' : 'Uploader le document'}
             </Button>

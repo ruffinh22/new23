@@ -6,9 +6,13 @@
 import { apiClient } from './api'
 
 export interface DocumentType {
-  value: string
-  label: string
+  id: number
+  name: string
+  display_name: string
   description?: string
+  is_active: boolean
+  icon?: string
+  color?: string
 }
 
 let cachedDocumentTypes: DocumentType[] | null = null
@@ -20,7 +24,7 @@ const CACHE_DURATION = 5 * 60 * 1000 // 5 minutes
  */
 export const documentTypeService = {
   /**
-   * Obtenir tous les types de documents
+   * Obtenir tous les types de documents actifs
    */
   async getDocumentTypes(): Promise<DocumentType[]> {
     // Retourner le cache s'il est valide
@@ -30,17 +34,14 @@ export const documentTypeService = {
 
     try {
       // Récupérer tous les types de documents depuis l'API
-      const response = await apiClient.get('/documents/specifications/')
+      const response = await apiClient.get('/documents/types/')
       const allTypes = Array.isArray(response.data) ? response.data : (response.data.results || response.data || [])
       
-      // Transformer les types
-      const documentTypes = allTypes.map((item: any) => ({
-        value: item.document_type,
-        label: item.display_name || item.document_type,
-        description: item.description
-      })).sort((a: DocumentType, b: DocumentType) => 
-        a.label.localeCompare(b.label)
-      )
+      // Filtrer les types actifs
+      const documentTypes = allTypes.filter((item: DocumentType) => item.is_active)
+        .sort((a: DocumentType, b: DocumentType) => 
+          a.display_name.localeCompare(b.display_name)
+        )
       
       // Mettre en cache
       cachedDocumentTypes = documentTypes
@@ -56,12 +57,16 @@ export const documentTypeService = {
   },
 
   /**
-   * Obtenir un type par sa valeur
+   * Obtenir un type par son ID ou son nom
    */
-  async getDocumentTypeLabel(value: string): Promise<string | null> {
+  async getDocumentTypeById(id: number): Promise<DocumentType | null> {
     const types = await this.getDocumentTypes()
-    const type = types.find(t => t.value === value)
-    return type?.label || null
+    return types.find(t => t.id === id) || null
+  },
+
+  async getDocumentTypeByName(name: string): Promise<DocumentType | null> {
+    const types = await this.getDocumentTypes()
+    return types.find(t => t.name === name) || null
   },
 
   /**
@@ -74,13 +79,15 @@ export const documentTypeService = {
   },
 
   /**
-   * Obtenir les types avec une option "Tous"
+   * Obtenir les types formatés pour dropdowns
    */
-  async getDocumentTypesWithAll(): Promise<DocumentType[]> {
+  async getDocumentTypesForSelect() {
     const types = await this.getDocumentTypes()
-    return [
-      { value: '', label: 'Tous les types' },
-      ...types
-    ]
+    return types.map(type => ({
+      label: type.display_name,
+      value: type.id,
+      icon: type.icon,
+      color: type.color,
+    }))
   }
 }

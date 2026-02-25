@@ -219,7 +219,7 @@ export function RoutingRulesManager() {
 
         // Charger tous les types de documents depuis l'API
         const types = await documentTypeService.getDocumentTypes();
-        setAllDocumentTypes(types);
+        setAllDocumentTypes(types.map(t => ({value: String(t.id), label: t.display_name})));
 
         // Charger les filiales
         const branchList = await branchService.getBranches();

@@ -127,8 +127,8 @@ export const DocumentsManagement: React.FC = () => {
 
   const loadDocumentTypes = useCallback(async () => {
     try {
-      const types = await documentTypeService.getDocumentTypesWithAll()
-      setDocumentTypes(types)
+      const types = await documentTypeService.getDocumentTypes()
+      setDocumentTypes(types.map(t => ({value: String(t.id), label: t.display_name})))
     } catch (err) {
       console.error('Erreur chargement types de documents:', err)
     }

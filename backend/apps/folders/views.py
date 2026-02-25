@@ -143,6 +143,29 @@ class FolderViewSet(PermissionMixin, viewsets.ModelViewSet):
         serializer = FolderSerializer(root_folders, many=True)
         return Response(serializer.data)
     
+    @action(detail=False, methods=['get'])
+    def get_received_folder(self, request):
+        """Retourne ou crée le dossier 'Received' de l'utilisateur courant."""
+        # Trouver/créer le dossier "Received" pour cet utilisateur
+        received_folder_name = f'Received - {request.user.get_full_name() or request.user.username}'
+        received_folder, created = Folder.objects.get_or_create(
+            owner=request.user,
+            folder_type='received_user',
+            defaults={
+                'name': received_folder_name,
+                'is_system_folder': True,
+                'description': f'Dossier de réception automatique pour {request.user.get_full_name() or request.user.username}',
+                'parent': None,
+            }
+        )
+        
+        serializer = FolderSerializer(received_folder)
+        return Response({
+            'folder': serializer.data,
+            'created': created,
+            'message': 'Dossier créé' if created else 'Dossier existant'
+        })
+    
     @action(detail=True, methods=['get'])
     def children(self, request, pk=None):
         """Retourne les sous-dossiers d'un dossier."""

@@ -62,6 +62,8 @@ const formatFileSize = (size: string | number): string => {
 export const AgentDocuments: React.FC = () => {
   const { user } = useAuth()
   const [documents, setDocuments] = useState<Document[]>([])
+  const [receivedDocuments, setReceivedDocuments] = useState<Document[]>([])
+  const [activeTab, setActiveTab] = useState<'all' | 'received'>('all')
   const [searchTerm, setSearchTerm] = useState('')
   const [selectedFolder, setSelectedFolder] = useState('Tous')
   const [isUploadModalOpen, setIsUploadModalOpen] = useState(false)
@@ -85,6 +87,7 @@ export const AgentDocuments: React.FC = () => {
   // Fetch documents on mount
   useEffect(() => {
     fetchDocuments()
+    fetchReceivedDocuments()
   }, [])
 
   // Auto-hide success message after 3 seconds
@@ -128,6 +131,37 @@ export const AgentDocuments: React.FC = () => {
       setError('Impossible de récupérer les documents depuis la base de données')
     } finally {
       setIsLoading(false)
+    }
+  }
+
+  const fetchReceivedDocuments = async () => {
+    try {
+      const response = await apiClient.get('/documents/received_documents/')
+      const data = Array.isArray(response.data) 
+        ? response.data 
+        : response.data?.results || response.data?.data || []
+      
+      if (data.length > 0) {
+        const fetchedDocs = data.map((doc: any) => ({
+          id: doc.id?.toString(),
+          name: doc.name || doc.title || '',
+          description: doc.description || '',
+          fileType: doc.file_type?.toUpperCase() || doc.file_format?.toUpperCase() || 'DOC',
+          fileSize: doc.file_size || 'N/A',
+          createdAt: doc.created_at ? new Date(doc.created_at) : new Date(),
+          updatedAt: doc.updated_at ? new Date(doc.updated_at) : undefined,
+          createdBy: doc.agent_username || doc.created_by?.username || doc.created_by || 'Système',
+          folder: doc.classification || doc.folder_name || doc.specification_display || 'Non classé',
+          status: doc.status || 'NOUVEAU',
+          downloads: doc.downloads_count || 0,
+        }))
+        setReceivedDocuments(fetchedDocs)
+      } else {
+        setReceivedDocuments([])
+      }
+    } catch (err) {
+      console.error('Error fetching received documents:', err)
+      // Don't show error for received documents - it's optional
     }
   }
 
@@ -241,6 +275,30 @@ export const AgentDocuments: React.FC = () => {
             </div>
           )}
 
+          {/* Tabs */}
+          <div className="mb-6 flex gap-2 border-b border-gray-200">
+            <button
+              onClick={() => setActiveTab('all')}
+              className={`px-4 py-3 font-medium text-sm border-b-2 transition ${
+                activeTab === 'all'
+                  ? 'border-primary-600 text-primary-600'
+                  : 'border-transparent text-secondary-600 hover:text-secondary-900'
+              }`}
+            >
+              📄 Tous les documents
+            </button>
+            <button
+              onClick={() => setActiveTab('received')}
+              className={`px-4 py-3 font-medium text-sm border-b-2 transition ${
+                activeTab === 'received'
+                  ? 'border-primary-600 text-primary-600'
+                  : 'border-transparent text-secondary-600 hover:text-secondary-900'
+              }`}
+            >
+              📥 Documents Reçus {receivedDocuments.length > 0 && `(${receivedDocuments.length})`}
+            </button>
+          </div>
+
           {/* Loading State */}
           {isLoading ? (
             <div className="flex flex-col items-center justify-center py-20">
@@ -249,7 +307,9 @@ export const AgentDocuments: React.FC = () => {
             </div>
           ) : (
             <>
-              {/* Main Content: Folders + Documents */}
+              {/* Main Content: Folders + Documents OR Received Documents */}
+              {activeTab === 'all' ? (
+              // TAB: Tous les documents
               <div className="grid grid-cols-1 lg:grid-cols-4 gap-6">
                 {/* Sidebar: Folder Tree */}
                 <div className="lg:col-span-1">
@@ -515,6 +575,154 @@ export const AgentDocuments: React.FC = () => {
                   )}
                 </div>
               </div>
+              ) : (
+                // TAB: Documents Reçus
+                <div className="space-y-6">
+                  {/* Search Bar for Received Documents */}
+                  <div className="flex gap-4">
+                    <div className="flex-1 relative">
+                      <Search size={20} className="absolute left-4 top-1/2 transform -translate-y-1/2 text-secondary-400" />
+                      <input
+                        type="text"
+                        placeholder="Rechercher dans vos documents reçus..."
+                        value={searchTerm}
+                        onChange={(e) => setSearchTerm(e.target.value)}
+                        className="input pl-12 py-3 w-full"
+                      />
+                    </div>
+
+                    {/* View Mode Toggle */}
+                    <div className="flex gap-2 bg-secondary-100 rounded-xl p-1">
+                      <button
+                        onClick={() => setViewMode('grid')}
+                        className={`p-3 rounded-lg transition-all ${
+                          viewMode === 'grid'
+                            ? 'bg-primary-600 text-white shadow-md'
+                            : 'text-secondary-600 hover:text-secondary-900'
+                        }`}
+                        title="Vue grille"
+                      >
+                        <LayoutGrid size={18} />
+                      </button>
+                      <button
+                        onClick={() => setViewMode('list')}
+                        className={`p-3 rounded-lg transition-all ${
+                          viewMode === 'list'
+                            ? 'bg-primary-600 text-white shadow-md'
+                            : 'text-secondary-600 hover:text-secondary-900'
+                        }`}
+                        title="Vue liste"
+                      >
+                        <List size={18} />
+                      </button>
+                    </div>
+                  </div>
+
+                  {/* Received Documents List */}
+                  {receivedDocuments.length > 0 ? (
+                    <div className="bg-white rounded-lg border border-gray-200/80 overflow-hidden shadow-elevation-2">
+                      {/* Table Header */}
+                      <div className="overflow-x-auto">
+                        <table className="w-full text-sm">
+                          <thead>
+                            <tr className="bg-gradient-to-r from-blue-600 to-blue-700 border-b-2 border-blue-700">
+                              <th className="px-3 py-4 text-left font-bold !text-white text-xs uppercase tracking-wider border-r border-blue-700 w-8"></th>
+                              <th className="px-4 py-4 text-left font-bold !text-white text-xs uppercase tracking-wider border-r border-blue-700 flex-1 min-w-[120px]">Titre</th>
+                              <th className="px-4 py-4 text-left font-bold !text-white text-xs uppercase tracking-wider border-r border-blue-700 w-16">Type</th>
+                              <th className="px-4 py-4 text-left font-bold !text-white text-xs uppercase tracking-wider border-r border-blue-700 hidden md:table-cell w-12">Taille</th>
+                              <th className="px-4 py-4 text-left font-bold !text-white text-xs uppercase tracking-wider border-r border-blue-700 hidden lg:table-cell w-24">Envoyé par</th>
+                              <th className="px-4 py-4 text-left font-bold !text-white text-xs uppercase tracking-wider border-r border-blue-700 hidden lg:table-cell w-24">Date</th>
+                              <th className="px-4 py-4 text-center font-bold !text-white text-xs uppercase tracking-wider w-16">Actions</th>
+                            </tr>
+                          </thead>
+                          <tbody className="divide-y divide-gray-200">
+                            {receivedDocuments
+                              .filter(doc => !searchTerm || doc.name.toLowerCase().includes(searchTerm.toLowerCase()))
+                              .map((doc, idx) => (
+                              <tr
+                                key={doc.id}
+                                className={`transition-all duration-200 group ${
+                                  idx % 2 === 0 ? 'bg-white hover:bg-blue-50/30' : 'bg-gray-50/50 hover:bg-blue-50/40'
+                                }`}
+                              >
+                                {/* Icon */}
+                                <td className="px-3 py-3.5 border-r border-gray-200 w-8">
+                                  <span className="transition-transform duration-200 group-hover:scale-110 inline-block">
+                                    <FileText size={20} className={`${
+                                      doc.fileType === 'PDF' ? 'text-red-500' :
+                                      doc.fileType === 'DOCX' ? 'text-blue-500' :
+                                      doc.fileType === 'XLSX' ? 'text-green-500' :
+                                      doc.fileType === 'PPTX' ? 'text-orange-500' :
+                                      'text-gray-500'
+                                    }`} />
+                                  </span>
+                                </td>
+
+                                {/* Title */}
+                                <td className="px-4 py-3.5 border-r border-gray-200 flex-1 min-w-[120px]">
+                                  <span className="font-bold text-black group-hover:text-primary-600 transition-colors duration-200 cursor-pointer break-words line-clamp-2">
+                                    {doc.name}
+                                  </span>
+                                </td>
+
+                                {/* Type */}
+                                <td className="px-4 py-3.5 border-r border-gray-200 w-16">
+                                  <span className={`inline-block px-3 py-1 rounded-full text-xs font-semibold ${getFileTypeColor(doc.fileType)}`}>
+                                    {doc.fileType}
+                                  </span>
+                                </td>
+
+                                {/* Size */}
+                                <td className="px-4 py-3.5 border-r border-gray-200 hidden md:table-cell w-12 text-secondary-600 text-xs font-medium">
+                                  {formatFileSize(doc.fileSize)}
+                                </td>
+
+                                {/* Sent By */}
+                                <td className="px-4 py-3.5 border-r border-gray-200 hidden lg:table-cell w-24 text-secondary-600 text-xs font-medium truncate">
+                                  {doc.createdBy}
+                                </td>
+
+                                {/* Date */}
+                                <td className="px-4 py-3.5 border-r border-gray-200 hidden lg:table-cell w-24 text-secondary-600 text-xs font-medium">
+                                  {doc.createdAt?.toLocaleDateString() || 'N/A'}
+                                </td>
+
+                                {/* Actions */}
+                                <td className="px-4 py-3.5 text-center w-16">
+                                  <div className="flex justify-center gap-2">
+                                    <button
+                                      onClick={() => setViewingDocumentId(doc.id)}
+                                      className="p-2 hover:bg-blue-100 rounded-lg transition-colors duration-200 text-blue-600 hover:text-blue-700"
+                                      title="Voir le document"
+                                    >
+                                      <Eye size={16} />
+                                    </button>
+                                    <button
+                                      onClick={() => handleDownload(doc)}
+                                      className="p-2 hover:bg-green-100 rounded-lg transition-colors duration-200 text-green-600 hover:text-green-700"
+                                      title="Télécharger"
+                                    >
+                                      <Download size={16} />
+                                    </button>
+                                  </div>
+                                </td>
+                              </tr>
+                            ))}
+                          </tbody>
+                        </table>
+                      </div>
+                    </div>
+                  ) : (
+                    <div className="card p-16 text-center">
+                      <div className="w-20 h-20 bg-blue-100 rounded-full flex items-center justify-center mx-auto mb-4">
+                        <FileText className="w-10 h-10 text-blue-400" />
+                      </div>
+                      <p className="text-secondary-900 font-semibold text-lg mb-2">Aucun document reçu</p>
+                      <p className="text-secondary-600">Les documents qui vous seront envoyés apparaîtront ici</p>
+                    </div>
+                  )}
+                </div>
+              )}
             </>
           )}
         </div>
@@ -548,7 +756,6 @@ export const AgentDocuments: React.FC = () => {
           />
         )}
 
-        {/* FileViewer Modal */}
         {viewingDocumentId && (
           <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4">
             <div className="bg-white rounded-lg w-full max-w-4xl max-h-[90vh] overflow-hidden flex flex-col shadow-2xl">

@@ -19,6 +19,7 @@ class Folder(models.Model):
         ('sub_service', 'Sous-service'),
         ('year', 'Année'),
         ('month', 'Mois'),
+        ('received_user', 'Reçu par utilisateur'),  # Nouveau type pour dossiers personnels Received
         # Anciens types (deprecated, pour compatibilité)
         ('branch', 'Filiale (legacy)'),
         ('department', 'Département (legacy)'),
@@ -63,6 +64,20 @@ class Folder(models.Model):
     
     # Description
     description = models.TextField(blank=True)
+    
+    # Dossiers système (created_by vs owner)
+    is_system_folder = models.BooleanField(
+        default=False,
+        help_text='Dossier système créé automatiquement (ex: Received pour utilisateur)'
+    )
+    owner = models.ForeignKey(
+        settings.AUTH_USER_MODEL,
+        on_delete=models.CASCADE,
+        null=True,
+        blank=True,
+        related_name='owned_folders',
+        help_text='Propriétaire du dossier (pour les dossiers personnels comme Received)'
+    )
     
     # Métadonnées
     created_by = models.ForeignKey(

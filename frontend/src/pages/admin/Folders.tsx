@@ -56,8 +56,6 @@ export const Folders: React.FC = () => {
     }
   }
 
-  const rootFolders = folderTree.filter((f: Folder) => !f.parent)
-
   // Obtenir tous les dossiers aplatis avec leur niveau hiérarchique
   const getAllFoldersFlat = (folders: Folder[], level: number = 0): Array<{ folder: Folder; level: number }> => {
     const result: Array<{ folder: Folder; level: number }> = []

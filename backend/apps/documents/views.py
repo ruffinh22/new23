@@ -10,7 +10,7 @@ from django.http import FileResponse, HttpResponse, StreamingHttpResponse
 import os
 from django.conf import settings
 
-from .models import Document, DocumentSpecification, DocumentValidationResult
+from .models import Document, DocumentSpecification, DocumentValidationResult, DocumentType
 from .serializers import (
     DocumentListSerializer,
     DocumentDetailSerializer,
@@ -18,10 +18,33 @@ from .serializers import (
     DocumentSpecificationSerializer,
     DocumentValidationResultSerializer,
     DocumentTransferSerializer,
+    DocumentTypeSerializer,
 )
 from .services import DocumentService, DocumentFilterService
 from .permissions import IsAdmin, IsOwnerOrAdmin
 from apps.common.mixins import PermissionMixin, FilterMixin
+
+
+class DocumentTypeViewSet(viewsets.ModelViewSet):
+    """ViewSet pour les types de documents."""
+    
+    serializer_class = DocumentTypeSerializer
+    filterset_fields = ['is_active']
+    search_fields = ['name', 'display_name']
+    ordering_fields = ['display_name', 'created_at']
+    ordering = ['display_name']
+    
+    def get_queryset(self):
+        """Return all types for admins, only active types for regular users."""
+        if self.request.user and self.request.user.is_staff:
+            return DocumentType.objects.all().order_by('display_name')
+        return DocumentType.objects.filter(is_active=True).order_by('display_name')
+    
+    def get_permissions(self):
+        """Allow all authenticated users to view, but only admins can create/update/delete."""
+        if self.action in ['create', 'update', 'partial_update', 'destroy']:
+            return [permissions.IsAdminUser()]
+        return [permissions.IsAuthenticated()]
 
 
 class DocumentSpecificationViewSet(viewsets.ModelViewSet):
@@ -175,6 +198,40 @@ class DocumentViewSet(PermissionMixin, FilterMixin, viewsets.ModelViewSet):
         is_validated = request.query_params.get('is_validated')
         if is_validated is not None:
             queryset = queryset.filter(is_validated=is_validated.lower() == 'true')
+        
+        serializer = DocumentListSerializer(
+            queryset.order_by('-created_at'),
+            many=True,
+            context=self.get_serializer_context()
+        )
+        
+        return Response(serializer.data)
+    
+    @action(detail=False, methods=['get'])
+    def received_documents(self, request):
+        """Retourne les documents reçus par l'utilisateur (dans le dossier Received)."""
+        from apps.folders.models import Folder
+        
+        # Trouver le dossier "Received" de l'utilisateur
+        received_folders = Folder.objects.filter(
+            owner=request.user,
+            folder_type='received_user'
+        )
+        
+        if not received_folders.exists():
+            return Response([])
+        
+        # Récupérer les documents dans les dossiers Received de l'utilisateur
+        queryset = Document.objects.filter(folder__in=received_folders)
+        
+        # Filtres optionnels
+        status_filter = request.query_params.get('status')
+        if status_filter:
+            queryset = queryset.filter(status=status_filter)
+        
+        doc_type = request.query_params.get('document_type')
+        if doc_type:
+            queryset = queryset.filter(document_type=doc_type)
         
         serializer = DocumentListSerializer(
             queryset.order_by('-created_at'),

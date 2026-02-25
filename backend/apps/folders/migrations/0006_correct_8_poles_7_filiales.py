@@ -70,10 +70,11 @@ def create_8_poles_7_filiales_structure(apps, schema_editor):
         )
         poles_created += 1
         
-        for branch in branches:
+        for i, branch in enumerate(branches):
             filiale_code = f"POL_{type_name[:3].upper()}_{branch.code[-2:].upper()}"
+            # Ne pas assigner country_code aux filiales pour éviter les contraintes d'unicité
             filiale = Folder.objects.create(
-                name=branch.name, code=filiale_code, country_code=branch.country_code,
+                name=branch.name, code=filiale_code,
                 parent=pole, folder_type='filiale', created_at=timezone.now(), updated_at=timezone.now()
             )
             filiales_created += 1

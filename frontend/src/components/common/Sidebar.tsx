@@ -14,8 +14,8 @@ import {
   User, 
   ChevronDown,
   Sparkles,
-  Building,
-  Lock
+  Lock,
+ 
 } from 'lucide-react'
 import { useAuth } from '@/contexts/AuthContext'
 import logoSgdra from '@/assets/logos/MediaContact_Logo.svg'
@@ -29,6 +29,7 @@ interface NavItem {
   badge?: string
   isSection?: boolean
   sectionLabel?: string
+  children?: NavItem[]  // Pour les items collapsibles
 }
 
 interface SidebarProps {
@@ -43,45 +44,46 @@ const NAV_ITEMS: NavItem[] = [
     label: 'Dashboard',
     path: '/dashboard',
     icon: <Home size={20} />,
-    roles: ['AGENT', 'ADMIN'],
+    roles: ['AGENT', 'ADMIN', 'POLE_MANAGER', 'FILIALE_MANAGER', 'SERVICE_MANAGER', 'DOCUMENT_MANAGER'],
     sectionLabel: 'Principal'
   },
   {
     label: 'Documents',
     path: '/documents',
     icon: <FileText size={20} />,
-    roles: ['AGENT'],
+    roles: ['AGENT', 'DOCUMENT_MANAGER'],
   },
   {
     label: 'Documents',
     path: '/admin/documents',
     icon: <FileText size={20} />,
-    roles: ['ADMIN'],
+    roles: ['ADMIN', 'POLE_MANAGER', 'FILIALE_MANAGER', 'SERVICE_MANAGER'],
   },
   {
     label: 'Reports',
     path: '/reports',
     icon: <BarChart3 size={20} />,
-    roles: ['AGENT', 'ADMIN'],
+    roles: ['AGENT', 'ADMIN', 'POLE_MANAGER', 'FILIALE_MANAGER', 'SERVICE_MANAGER', 'DOCUMENT_MANAGER'],
   },
   {
     label: 'Schedule',
     path: '/schedule',
     icon: <Bell size={20} />,
-    roles: ['AGENT', 'ADMIN'],
+    roles: ['AGENT', 'ADMIN', 'POLE_MANAGER', 'FILIALE_MANAGER', 'SERVICE_MANAGER', 'DOCUMENT_MANAGER'],
   },
   {
     label: 'Templates',
     path: '/templates',
     icon: <FileText size={20} />,
-    roles: ['AGENT', 'ADMIN'],
+    roles: ['AGENT', 'ADMIN', 'POLE_MANAGER', 'FILIALE_MANAGER', 'SERVICE_MANAGER', 'DOCUMENT_MANAGER'],
   },
   {
     label: 'Guide Complet SGDRA',
     path: '/guide',
     icon: <Sparkles size={20} />,
-    roles: ['AGENT', 'ADMIN'],
+    roles: ['AGENT', 'ADMIN', 'POLE_MANAGER', 'FILIALE_MANAGER', 'SERVICE_MANAGER', 'DOCUMENT_MANAGER'],
   },
+  
   {
     label: 'Users',
     path: '/users',
@@ -140,6 +142,7 @@ export const Sidebar: React.FC<SidebarProps> = ({
   const [isCollapsed, setIsCollapsed] = useState(collapsedProp)
   const [isUserMenuOpen, setIsUserMenuOpen] = useState(false)
   const [hoveredItem, setHoveredItem] = useState<string | null>(null)
+  const [expandedItems, setExpandedItems] = useState<Set<string>>(new Set(['Schedule']))
 
   // Synchroniser avec mobileMenuOpen du Layout
   useEffect(() => {
@@ -182,6 +185,23 @@ export const Sidebar: React.FC<SidebarProps> = ({
       setIsOpen(false)
       onMobileMenuToggle?.(false)
     }
+  }
+
+  const toggleItemExpand = (itemLabel: string) => {
+    const newExpanded = new Set(expandedItems)
+    if (newExpanded.has(itemLabel)) {
+      newExpanded.delete(itemLabel)
+    } else {
+      newExpanded.add(itemLabel)
+    }
+    setExpandedItems(newExpanded)
+  }
+
+  const hasVisibleChildren = (item: NavItem) => {
+    if (!item.children) return false
+    return item.children.some(child => 
+      child.roles.includes(user?.role || '')
+    )
   }
 
   return (
@@ -248,7 +268,123 @@ export const Sidebar: React.FC<SidebarProps> = ({
               {group.items.map((item) => {
                 const isActive = item.path && location.pathname === item.path
                 const isHovered = hoveredItem === item.path
+                const isExpanded = expandedItems.has(item.label)
+                const hasChildren = hasVisibleChildren(item)
 
+                // Render collapsible item
+                if (hasChildren) {
+                  return (
+                    <div key={item.label}>
+                      {/* Parent Item - collapsible button */}
+                      <button
+                        onClick={() => toggleItemExpand(item.label)}
+                        onMouseEnter={() => setHoveredItem(item.label)}
+                        onMouseLeave={() => setHoveredItem(null)}
+                        title={isCollapsed ? item.label : ''}
+                        className={`
+                          w-full group relative flex items-center gap-3.5 px-3.5 py-2.5 rounded-xl 
+                          transition-all duration-200 ease-out
+                          ${isCollapsed ? 'justify-center px-0' : 'justify-between'}
+                          ${isActive 
+                            ? 'bg-white text-primary-700 font-semibold shadow-lg ring-1 ring-white/80' 
+                            : 'text-white/90 hover:bg-white/45 hover:text-white'
+                          }
+                          ${isHovered && !isActive ? 'scale-[1.02]' : 'scale-100'}
+                        `}
+                      >
+                        {/* Active Indicator */}
+                        {isActive && (
+                          <div className="absolute left-0 top-1/2 -translate-y-1/2 w-1 h-7 bg-gradient-to-b from-accent-500 via-accent-600 to-primary-600 rounded-r-full shadow-[0_0_12px_rgba(14,165,233,0.5)]" />
+                        )}
+
+                        {/* Icon + Label */}
+                        <div className="flex items-center gap-3.5 flex-1">
+                          <div className={`
+                            flex-shrink-0 transition-all duration-200
+                            ${isActive 
+                              ? 'text-primary-600' 
+                              : 'text-white/80 group-hover:text-white'
+                            }
+                            ${isHovered && !isActive ? 'scale-110 rotate-3' : 'scale-100 rotate-0'}
+                          `}>
+                            {item.icon}
+                          </div>
+
+                          {!isCollapsed && (
+                            <span className={`
+                              flex-1 text-sm font-semibold truncate transition-all duration-200 drop-shadow-sm text-left
+                              ${isActive 
+                                ? 'text-primary-700' 
+                                : 'text-white group-hover:text-white/95'
+                              }
+                            `}>
+                              {item.label}
+                            </span>
+                          )}
+                        </div>
+
+                        {/* Chevron indicator */}
+                        {!isCollapsed && (
+                          <ChevronDown 
+                            size={16}
+                            className={`
+                              flex-shrink-0 transition-transform duration-300
+                              ${isActive ? 'text-primary-600' : 'text-white/80'}
+                              ${isExpanded ? 'rotate-180' : 'rotate-0'}
+                            `}
+                          />
+                        )}
+                      </button>
+
+                      {/* Child Items */}
+                      {isExpanded && !isCollapsed && (
+                        <div className="mt-1 ml-2 space-y-0.5">
+                          {item.children?.map((child) => {
+                            if (!child.roles.includes(user?.role || '')) return null
+                            
+                            const isChildActive = child.path && location.pathname === child.path
+                            return (
+                              <Link
+                                key={child.path}
+                                to={child.path || '#'}
+                                onClick={handleMobileClose}
+                                onMouseEnter={() => setHoveredItem(child.path || null)}
+                                onMouseLeave={() => setHoveredItem(null)}
+                                className={`
+                                  group relative flex items-center gap-3 px-3 py-2 rounded-lg 
+                                  transition-all duration-200 ease-out border-l-2 pl-3
+                                  ${isChildActive 
+                                    ? 'bg-white/25 text-white font-semibold border-accent-300 shadow-md' 
+                                    : 'text-white/70 hover:bg-white/10 hover:text-white border-transparent'
+                                  }
+                                  ${hoveredItem === child.path ? 'scale-[1.01]' : 'scale-100'}
+                                `}
+                              >
+                                {/* Icon */}
+                                <div className={`
+                                  flex-shrink-0 transition-all duration-200
+                                  ${isChildActive ? 'text-accent-300' : 'text-white/60 group-hover:text-white/80'}
+                                `}>
+                                  {child.icon}
+                                </div>
+
+                                {/* Label */}
+                                <span className={`
+                                  flex-1 text-sm font-medium transition-all duration-200 drop-shadow-sm
+                                  ${isChildActive ? 'text-white' : 'text-white/70 group-hover:text-white/90'}
+                                `}>
+                                  {child.label}
+                                </span>
+                              </Link>
+                            )
+                          })}
+                        </div>
+                      )}
+                    </div>
+                  )
+                }
+
+                // Render regular item
                 return (
                   <Link
                     key={item.path}

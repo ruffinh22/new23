@@ -71,9 +71,9 @@ const FolderTreeItem: React.FC<{
 
       {isExpanded && hasChildren && (
         <div>
-          {folder.children!.map(child => (
+          {folder.children!.map((child, index) => (
             <FolderTreeItem
-              key={child.id}
+              key={`${folder.id}-child-${index}`}
               folder={child}
               level={level + 1}
               onFolderSelect={onFolderSelect}
@@ -101,22 +101,42 @@ export const FolderTree: React.FC<FolderTreeProps> = ({
 
   useEffect(() => {
     fetchFolderTree()
-  }, [refreshTrigger, isAdminUser, user?.department])
+  }, [refreshTrigger, isAdminUser, user?.id, user?.branch])
 
   const fetchFolderTree = async () => {
     try {
       setIsLoading(true)
       setError(null)
-      // Pour les admins: afficher tous les dossiers
-      // Pour les agents: afficher seulement les dossiers du département
-      let endpoint = '/folders/folders/tree/'
       
-      if (!isAdminUser && user?.department) {
-        endpoint = `/folders/folders/tree/?department=${user.department}`
+      // Toujours charger les pôles racine (roots) pour tous les utilisateurs
+      const response = await apiClient.get('/folders/root/')
+      let rootFolders = response.data || []
+      
+      // Pour les agents non-admin, reconstruire l'arborescence avec leurs restrictions
+      if (!isAdminUser && user?.branch) {
+        // Filtrer pour afficher seulement la branche de l'agent
+        rootFolders = rootFolders.filter((folder: any) => folder.id === user.branch)
       }
       
-      const response = await apiClient.get(endpoint)
-      setFolders(response.data || [])
+      // Ajouter le dossier "Received" en haut de la liste pour tous les utilisateurs
+      if (user?.id) {
+        try {
+          const receivedResponse = await apiClient.get('/folders/get_received_folder/')
+          if (receivedResponse.data?.folder) {
+            const receivedFolder: FolderNode = {
+              id: receivedResponse.data.folder.id,
+              name: `📥 ${receivedResponse.data.folder.name}`,
+              description: 'Documents reçus',
+              children: undefined
+            }
+            rootFolders = [receivedFolder, ...rootFolders]
+          }
+        } catch (err) {
+          console.warn('Could not fetch received folder:', err)
+        }
+      }
+      
+      setFolders(rootFolders)
     } catch (err) {
       console.error('Error fetching folder tree:', err)
       setError('Impossible de récupérer la structure des dossiers')
@@ -153,9 +173,9 @@ export const FolderTree: React.FC<FolderTreeProps> = ({
 
   return (
     <div className="space-y-1">
-      {folders.map(folder => (
+      {folders.map((folder, index) => (
         <FolderTreeItem
-          key={folder.id}
+          key={`root-${index}-${folder.id}`}
           folder={folder}
           level={0}
           onFolderSelect={onFolderSelect}

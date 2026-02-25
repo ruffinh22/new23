@@ -544,4 +544,4 @@ export const notificationService = {
   }
 }
 
-export type { NotificationFilters, BulkOperationResponse, NotificationStatistics }
+

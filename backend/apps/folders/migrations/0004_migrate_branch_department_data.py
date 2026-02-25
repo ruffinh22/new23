@@ -5,31 +5,46 @@ from django.db import migrations
 
 def migrate_branch_department_data(apps, schema_editor):
     """Migrer les données de Branch/Department vers Folder types."""
-    Branch = apps.get_model('users', 'Branch')
-    Department = apps.get_model('users', 'Department')
     Folder = apps.get_model('folders', 'Folder')
+    
+    # Check if Branch and Department models still exist (for legacy databases)
+    try:
+        Branch = apps.get_model('users', 'Branch')
+        has_branch = True
+    except LookupError:
+        has_branch = False
+    
+    try:
+        Department = apps.get_model('users', 'Department')
+        has_department = True
+    except LookupError:
+        has_department = False
     
     # Script de migration
     print("\n🔄 Migration des données Branch/Department → Folder types...")
     
-    # 1. Migrer les Folders de Branch (type='branch')
-    print("\n📦 Traitement des Branches...")
-    for branch in Branch.objects.filter(folder__isnull=False):
-        folder = branch.folder
-        folder.folder_type = 'branch'
-        folder.code = branch.code
-        folder.country_code = branch.country_code
-        folder.save(update_fields=['folder_type', 'code', 'country_code'])
-        print(f"  ✅ {branch.name}: folder type='branch', code='{branch.code}'")
+    # 1. Migrer les Folders de Branch (type='branch') si le modèle existe
+    if has_branch:
+        print("\n📦 Traitement des Branches...")
+        for branch in Branch.objects.filter(folder__isnull=False):
+            folder = branch.folder
+            folder.folder_type = 'branch'
+            folder.code = branch.code
+            folder.country_code = branch.country_code
+            folder.save(update_fields=['folder_type', 'code', 'country_code'])
+            print(f"  ✅ {branch.name}: folder type='branch', code='{branch.code}'")
+    else:
+        print("\n📦 Les modèles Branch & Department n'existent plus - migration ignorée (DB en base nouveau)")
     
-    # 2. Migrer les Folders de Department (type='department')
-    print("\n📦 Traitement des Departments...")
-    for dept in Department.objects.filter(folder__isnull=False):
-        folder = dept.folder
-        folder.folder_type = 'department'
-        folder.code = dept.code
-        folder.save(update_fields=['folder_type', 'code'])
-        print(f"  ✅ {dept.name}: folder type='department', code='{dept.code}'")
+    # 2. Migrer les Folders de Department (type='department') si le modèle existe
+    if has_department:
+        print("\n📦 Traitement des Departments...")
+        for dept in Department.objects.filter(folder__isnull=False):
+            folder = dept.folder
+            folder.folder_type = 'department'
+            folder.code = dept.code
+            folder.save(update_fields=['folder_type', 'code'])
+            print(f"  ✅ {dept.name}: folder type='department', code='{dept.code}'")
     
     print("\n✅ Migration des données terminée!")
 

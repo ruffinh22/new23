@@ -6,22 +6,25 @@ import {
 import { Layout } from '@/components/common'
 import { apiClient } from '@/services/api'
 import { useAuth } from '@/contexts/AuthContext'
+import { documentTypeService } from '@/services/documentTypeService'
 
 interface DocumentType {
   id: number
-  document_type: string
+  name: string
   display_name: string
   description: string
+  icon: string
+  color: string
   allowed_formats: string
   allowed_formats_list: string[]
+  max_file_size_mb: number
   requires_excel: boolean
   excel_sheet_name: string
-  required_columns: string[]
+  required_columns: string
   required_columns_list: string[]
-  max_file_size_mb: number
   max_rows: number | null
-  is_active: boolean
   requires_validation: boolean
+  is_active: boolean
   created_at: string
   updated_at: string
 }
@@ -46,7 +49,7 @@ export const DocumentTypesManagement: React.FC = () => {
     try {
       setIsLoading(true)
       setError(null)
-      const response = await apiClient.get('/documents/specifications/')
+      const response = await apiClient.get('/documents/types/')
       const data = Array.isArray(response.data) ? response.data : response.data.results || []
       setDocumentTypes(data)
       console.log(`✅ Loaded ${data.length} document types`)
@@ -68,8 +71,8 @@ export const DocumentTypesManagement: React.FC = () => {
 
   // Créer un nouveau type
   const handleAddDocumentType = async () => {
-    if (!editingData.document_type || !editingData.display_name) {
-      setError('Le type et le nom d\'affichage sont requis')
+    if (!editingData.name || !editingData.display_name) {
+      setError('Le nom unique et le nom d\'affichage sont requis')
       return
     }
 
@@ -77,19 +80,30 @@ export const DocumentTypesManagement: React.FC = () => {
       setIsSaving(true)
       setError(null)
       const requiredCols = (() => {
-        if (!editingData.required_columns) return []
+        if (!editingData.required_columns) return ''
         if (Array.isArray(editingData.required_columns)) {
-          return editingData.required_columns
+          return editingData.required_columns.join(',')
         }
-        const str = String(editingData.required_columns)
-        return str.split(',').map(c => c.trim()).filter(c => c)
+        return String(editingData.required_columns)
       })()
       const payload = {
-        ...editingData,
-        required_columns: requiredCols
+        name: editingData.name.toUpperCase(),
+        display_name: editingData.display_name,
+        description: editingData.description || '',
+        icon: editingData.icon || 'file',
+        color: editingData.color || '#6B7280',
+        allowed_formats: editingData.allowed_formats || 'pdf,docx,xlsx',
+        max_file_size_mb: Number(editingData.max_file_size_mb || 50),
+        requires_excel: editingData.requires_excel || false,
+        excel_sheet_name: editingData.excel_sheet_name || '',
+        required_columns: requiredCols,
+        max_rows: editingData.max_rows ? Number(editingData.max_rows) : null,
+        requires_validation: editingData.requires_validation !== false,
+        is_active: true
       }
-      const response = await apiClient.post('/documents/specifications/', payload)
+      const response = await apiClient.post('/documents/types/', payload)
       setDocumentTypes([...documentTypes, response.data])
+      documentTypeService.invalidateCache()
       setSuccessMessage('Type de document créé avec succès')
       setShowAddModal(false)
       setEditingData({})
@@ -109,19 +123,29 @@ export const DocumentTypesManagement: React.FC = () => {
       setIsSaving(true)
       setError(null)
       const requiredCols = (() => {
-        if (!editingData.required_columns) return []
+        if (!editingData.required_columns) return ''
         if (Array.isArray(editingData.required_columns)) {
-          return editingData.required_columns
+          return editingData.required_columns.join(',')
         }
-        const str = String(editingData.required_columns)
-        return str.split(',').map(c => c.trim()).filter(c => c)
+        return String(editingData.required_columns)
       })()
       const payload = {
-        ...editingData,
-        required_columns: requiredCols
+        display_name: editingData.display_name,
+        description: editingData.description || '',
+        icon: editingData.icon || 'file',
+        color: editingData.color || '#6B7280',
+        allowed_formats: editingData.allowed_formats || 'pdf,docx,xlsx',
+        max_file_size_mb: Number(editingData.max_file_size_mb || 50),
+        requires_excel: editingData.requires_excel || false,
+        excel_sheet_name: editingData.excel_sheet_name || '',
+        required_columns: requiredCols,
+        max_rows: editingData.max_rows ? Number(editingData.max_rows) : null,
+        requires_validation: editingData.requires_validation !== false,
+        is_active: editingData.is_active ?? true
       }
-      const response = await apiClient.patch(`/documents/specifications/${editingId}/`, payload)
+      const response = await apiClient.patch(`/documents/types/${editingId}/`, payload)
       setDocumentTypes(documentTypes.map(dt => (dt.id === editingId ? response.data : dt)))
+      documentTypeService.invalidateCache()
       setSuccessMessage('Type de document mis à jour avec succès')
       setEditingId(null)
       setEditingData({})
@@ -140,8 +164,9 @@ export const DocumentTypesManagement: React.FC = () => {
     try {
       setIsSaving(true)
       setError(null)
-      await apiClient.delete(`/documents/specifications/${id}/`)
+      await apiClient.delete(`/documents/types/${id}/`)
       setDocumentTypes(documentTypes.filter(dt => dt.id !== id))
+      documentTypeService.invalidateCache() // Invalidate frontend cache
       setSuccessMessage('Type de document supprimé avec succès')
       setTimeout(() => setSuccessMessage(null), 3000)
     } catch (err: any) {
@@ -195,17 +220,18 @@ export const DocumentTypesManagement: React.FC = () => {
               </div>
             )}
 
-            {/* Type de document */}
+            {/* Nom unique (key) */}
             <div>
-              <label className="block text-sm font-semibold text-slate-700 mb-2">Type de document *</label>
+              <label className="block text-sm font-semibold text-slate-700 mb-2">Nom unique (clé) *</label>
               <input
                 type="text"
-                value={editingData.document_type || ''}
-                onChange={(e) => setEditingData({ ...editingData, document_type: e.target.value })}
-                placeholder="ex: CONGE, RAPPORT_EXCEL"
+                value={editingData.name || ''}
+                onChange={(e) => setEditingData({ ...editingData, name: e.target.value.toUpperCase() })}
+                placeholder="ex: CONGE, RAPPORT_MENSUEL, FACTURE"
                 disabled={isEditing}
-                className="w-full px-3 py-2 border border-slate-300 rounded-lg focus:ring-2 focus:ring-primary-500 disabled:bg-slate-100"
+                className="w-full px-3 py-2 border border-slate-300 rounded-lg focus:ring-2 focus:ring-primary-500 disabled:bg-slate-100 font-mono"
               />
+              <p className="text-xs text-slate-500 mt-1">Identifiant unique, sera converti en majuscules</p>
             </div>
 
             {/* Nom d'affichage */}
@@ -215,7 +241,7 @@ export const DocumentTypesManagement: React.FC = () => {
                 type="text"
                 value={editingData.display_name || ''}
                 onChange={(e) => setEditingData({ ...editingData, display_name: e.target.value })}
-                placeholder="ex: Congé, Rapport Excel"
+                placeholder="ex: Congé, Rapport Mensuel, Facture"
                 className="w-full px-3 py-2 border border-slate-300 rounded-lg focus:ring-2 focus:ring-primary-500"
               />
             </div>
@@ -226,32 +252,66 @@ export const DocumentTypesManagement: React.FC = () => {
               <textarea
                 value={editingData.description || ''}
                 onChange={(e) => setEditingData({ ...editingData, description: e.target.value })}
-                placeholder="Description du type de document"
+                placeholder="Description optionnelle du type de document"
                 className="w-full px-3 py-2 border border-slate-300 rounded-lg focus:ring-2 focus:ring-primary-500 min-h-24"
               />
             </div>
 
+            {/* Icon */}
+            <div>
+              <label className="block text-sm font-semibold text-slate-700 mb-2">Icône</label>
+              <input
+                type="text"
+                value={editingData.icon || ''}
+                onChange={(e) => setEditingData({ ...editingData, icon: e.target.value })}
+                placeholder="ex: file, file-pdf, file-text, briefcase, check-square"
+                className="w-full px-3 py-2 border border-slate-300 rounded-lg focus:ring-2 focus:ring-primary-500 font-mono text-sm"
+              />
+              <p className="text-xs text-slate-500 mt-1">Nom d'icône lucide-react (défaut: file)</p>
+            </div>
+
+            {/* Couleur */}
+            <div>
+              <label className="block text-sm font-semibold text-slate-700 mb-2">Couleur</label>
+              <div className="flex gap-3">
+                <input
+                  type="color"
+                  value={editingData.color || '#6B7280'}
+                  onChange={(e) => setEditingData({ ...editingData, color: e.target.value })}
+                  className="w-12 h-10 border border-slate-300 rounded-lg cursor-pointer"
+                />
+                <input
+                  type="text"
+                  value={editingData.color || ''}
+                  onChange={(e) => setEditingData({ ...editingData, color: e.target.value })}
+                  placeholder="ex: #6B7280"
+                  className="flex-1 px-3 py-2 border border-slate-300 rounded-lg focus:ring-2 focus:ring-primary-500 font-mono text-sm"
+                />
+              </div>
+              <p className="text-xs text-slate-500 mt-1">Code couleur hexadécimal (défaut: #6B7280)</p>
+            </div>
+
             {/* Formats autorisés */}
             <div>
-              <label className="block text-sm font-semibold text-slate-700 mb-2">Formats autorisés *</label>
+              <label className="block text-sm font-semibold text-slate-700 mb-2">Formats autorisés</label>
               <input
                 type="text"
                 value={editingData.allowed_formats || ''}
                 onChange={(e) => setEditingData({ ...editingData, allowed_formats: e.target.value })}
                 placeholder="pdf,docx,xlsx (séparés par des virgules)"
-                className="w-full px-3 py-2 border border-slate-300 rounded-lg focus:ring-2 focus:ring-primary-500"
+                className="w-full px-3 py-2 border border-slate-300 rounded-lg focus:ring-2 focus:ring-primary-500 font-mono text-sm"
               />
               <p className="text-xs text-slate-500 mt-1">Formats disponibles: pdf, doc, docx, xls, xlsx, xlsm, csv, txt, image, zip</p>
             </div>
 
-            {/* Taille max */}
+            {/* Taille max et Lignes max */}
             <div className="grid grid-cols-2 gap-4">
               <div>
                 <label className="block text-sm font-semibold text-slate-700 mb-2">Taille max (MB)</label>
                 <input
                   type="number"
                   value={editingData.max_file_size_mb || ''}
-                  onChange={(e) => setEditingData({ ...editingData, max_file_size_mb: Number(e.target.value) })}
+                  onChange={(e) => setEditingData({ ...editingData, max_file_size_mb: e.target.value })}
                   className="w-full px-3 py-2 border border-slate-300 rounded-lg focus:ring-2 focus:ring-primary-500"
                 />
               </div>
@@ -301,7 +361,7 @@ export const DocumentTypesManagement: React.FC = () => {
                       }
                       onChange={(e) => setEditingData({ ...editingData, required_columns: e.target.value })}
                       placeholder="ex: Nom, Email, Département (séparées par des virgules)"
-                      className="w-full px-3 py-2 border border-slate-300 rounded-lg focus:ring-2 focus:ring-primary-600 min-h-20"
+                      className="w-full px-3 py-2 border border-slate-300 rounded-lg focus:ring-2 focus:ring-primary-500 min-h-20"
                     />
                   </div>
                 </>
@@ -391,9 +451,13 @@ export const DocumentTypesManagement: React.FC = () => {
               onClick={() => {
                 setShowAddModal(true)
                 setEditingData({
-                  requires_validation: true,
                   is_active: true,
-                  max_file_size_mb: 50
+                  icon: 'file',
+                  color: '#6B7280',
+                  allowed_formats: 'pdf,docx,xlsx',
+                  max_file_size_mb: 50,
+                  requires_validation: true,
+                  requires_excel: false
                 })
               }}
               className="px-4 py-2 bg-primary-600 text-white rounded-lg hover:bg-primary-700 transition flex items-center gap-2"
@@ -444,7 +508,7 @@ export const DocumentTypesManagement: React.FC = () => {
                 {memoizedDocumentTypes.map((dt) => (
                   <React.Fragment key={dt.id}>
                     <tr className="hover:bg-slate-50 transition">
-                      <td className="px-6 py-3 text-sm font-mono text-slate-900">{dt.document_type}</td>
+                      <td className="px-6 py-3 text-sm font-mono text-slate-900">{dt.name}</td>
                       <td className="px-6 py-3 text-sm text-slate-900 font-semibold">{dt.display_name}</td>
                       <td className="px-6 py-3 text-sm text-slate-600">
                         <span className="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-blue-100 text-blue-800">
@@ -496,6 +560,22 @@ export const DocumentTypesManagement: React.FC = () => {
                             <div>
                               <p className="text-xs font-semibold text-slate-700 uppercase tracking-wide">Description</p>
                               <p className="text-sm text-slate-600 mt-1">{dt.description || '—'}</p>
+                            </div>
+                            <div className="flex gap-4">
+                              <div>
+                                <p className="text-xs font-semibold text-slate-700 uppercase tracking-wide">Couleur</p>
+                                <div className="flex items-center gap-2 mt-1">
+                                  <div 
+                                    className="w-6 h-6 rounded border border-slate-300" 
+                                    style={{ backgroundColor: dt.color || '#6B7280' }}
+                                  />
+                                  <span className="font-mono text-sm">{dt.color}</span>
+                                </div>
+                              </div>
+                              <div>
+                                <p className="text-xs font-semibold text-slate-700 uppercase tracking-wide">Icône</p>
+                                <p className="text-sm text-slate-600 mt-1">{dt.icon || 'file'}</p>
+                              </div>
                             </div>
                             {dt.requires_excel && (
                               <>

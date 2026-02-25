@@ -38,6 +38,7 @@ urlpatterns = [
     path('api/folders/', include('apps.folders.urls')),
     path('api/routing-rules/', include('apps.routing_rules.urls')),
     path('api/notifications/', include('apps.notifications.urls')),
+    path('api/scheduling/', include('apps.scheduling.urls')),
     
     # Frontend (React SPA) - Must be LAST (catches all remaining routes)
     # Static files are served by WhiteNoise middleware (production-grade)

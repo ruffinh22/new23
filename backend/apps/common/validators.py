@@ -176,14 +176,16 @@ class DocumentValidator(RequestValidator):
         cls.validate_required(data, ['document_type', 'title'])
         
         # Types
-        cls.validate_type(data.get('document_type'), str, 'document_type')
+        # ✅ FIXED: document_type est maintenant un ID (int) du modèle DocumentType, pas une string
+        cls.validate_type(data.get('document_type'), int, 'document_type')
         cls.validate_type(data.get('title'), str, 'title')
         # agent_id est optionnel - validé seulement s'il est fourni
         if data.get('agent_id'):
             cls.validate_type(data.get('agent_id'), int, 'agent_id')
         
-        # Énumérations
-        cls.validate_choice(data.get('document_type'), cls.VALID_DOCUMENT_TYPES, 'document_type')
+        # ✅ REMOVED: validate_choice check - utilise maintenant le modèle flexible DocumentType
+        # Les validations des formats de fichier, colonnes requises, etc. se font dans
+        # DocumentCreateSerializer après récupération du DocumentType avec cet ID
         
         # Longueur
         cls.validate_length(data.get('title'), min_len=3, max_len=255, field_name='title')

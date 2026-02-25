@@ -106,8 +106,8 @@ def create_department_folders_on_upload(sender, instance, created, **kwargs):
             
             # Toujours utiliser le libellé du type de document comme sous-dossier
             # (Ignorer les mappings DepartmentDocumentType qui peuvent mal pointer)
-            type_choices = dict(Document.DOCUMENT_TYPE_CHOICES)
-            subfolder_name = type_choices.get(instance.document_type, instance.document_type)
+            # document_type est maintenant une ForeignKey à DocumentType
+            subfolder_name = instance.document_type.display_name if instance.document_type else 'Unknown'
             logger.info(f"📂 Sous-dossier selon type de document: '{subfolder_name}'")
         
         logger.info(f"📂 Nom du sous-dossier final: '{subfolder_name}'")
@@ -349,8 +349,8 @@ def create_folders_on_document_type_added(sender, instance, created, **kwargs):
         logger.info(f"📁 Dossier cible: {target_folder.id} ({target_folder.name})")
         
         # Déterminer le nom du sous-dossier
-        type_choices = dict(Document.DOCUMENT_TYPE_CHOICES)
-        subfolder_name = type_choices.get(instance.document_type, instance.document_type)
+        # document_type est maintenant une ForeignKey à DocumentType
+        subfolder_name = instance.document_type.display_name if instance.document_type else 'Unknown'
         
         logger.info(f"🔍 Création du sous-dossier: '{subfolder_name}'")
         

@@ -15,7 +15,23 @@ app.autodiscover_tasks()
 
 # Celery Beat Schedule - Tâches périodiques (PHASE 5 - Notifications Refactored)
 app.conf.beat_schedule = {
-    # ===== NOTIFICATION TASKS (NEW - PHASE 5) =====
+    # ===== EMAIL SCHEDULING TASKS (NEW - PHASE 13) =====
+    
+    # Envoi des emails programmés - Toutes les 5 minutes
+    'send-scheduled-emails': {
+        'task': 'apps.scheduling.tasks.send_scheduled_emails',
+        'schedule': crontab(minute='*/5'),  # Toutes les 5 minutes
+        'kwargs': {}
+    },
+    
+    # Nettoyage des événements archivés - Quotidiennement à 03:00
+    'cleanup-old-events-daily': {
+        'task': 'apps.scheduling.tasks.cleanup_old_events',
+        'schedule': crontab(hour=3, minute=0),
+        'kwargs': {}
+    },
+    
+    # ===== NOTIFICATION TASKS (EXISTING - PHASE 5) =====
     
     # Archive des vieilles notifications (> 30 jours) - Quotidiennement à 01:00
     'archive-old-notifications-daily': {

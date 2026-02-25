@@ -4,7 +4,7 @@ Service pour la gestion des documents et leur validation.
 
 from django.db import transaction
 from django.utils import timezone
-from .models import Document, DocumentValidationResult, DocumentSpecification
+from .models import Document, DocumentValidationResult, DocumentSpecification, DocumentType
 from .validators import ValidationService
 from .file_upload_validator import FileTypeValidator
 from apps.folders.models import Folder
@@ -14,18 +14,25 @@ class DocumentService:
     """Service pour gérer les documents avec validation."""
     
     @staticmethod
-    def organize_with_hierarchy(folder=None, agent=None, document_type=None):
+    def organize_with_hierarchy(folder=None, agent=None, document_type: 'DocumentType' = None, is_recipient_upload: bool = False):
         """
-        Organise le document dans la hiérarchie: Filiale > Service > Type Doc
+        Organise le document dans la hiérarchie.
+        
+        Mode normal (is_recipient_upload=False):
+          Filiale > Service (agent) > Type Doc
+        
+        Mode destinataire (is_recipient_upload=True):
+          Filiale/Service/Pole (destinataire) > Type Doc (sans service de l'agent)
         
         Crée automatiquement les dossiers manquants.
         
         ✅ VALIDATION: Vérifie que la Filiale est du bon Pôle de l'agent
         
         Args:
-            folder: Dossier Filiale de base
+            folder: Dossier Filiale/Service/Pole de base
             agent: Utilisateur qui upload (pour accéder au Service et Pôle)
             document_type: Type de document (pour créer le dossier spécifique)
+            is_recipient_upload: True si c'est un envoi à destinataire (skip agent's service)
         
         Returns:
             Le dossier où placer le document
@@ -34,7 +41,8 @@ class DocumentService:
             return None
         
         # ✅ VALIDATION: Vérifier que la Filiale est dans le BON Pôle
-        if agent and agent.pole:
+        # (Sauf si c'est un envoi à destinataire, où la destination est explicitement choisie)
+        if agent and agent.pole and not is_recipient_upload:
             # La filiale doit avoir le même Pôle parent que l'agent
             # folder.parent = folder du Pôle (parent du parent est None pour une filiale racine)
             folder_pole_id = folder.parent_id if folder.parent else None
@@ -65,8 +73,10 @@ class DocumentService:
         # Dossier courant = Filiale
         current_folder = folder
         
-        # 1️⃣ Service (si l'agent en a un assigné)
-        if agent and agent.department:
+        # 1️⃣ Service (si l'agent en a un assigné ET si ce n'est PAS un envoi à destinataire)
+        # Quand on envoie à un destinataire, la hiérarchie est déjà correcte (Pole/Filiale/Service)
+        # On ne doit pas ajouter le service de l'agent
+        if agent and agent.department and not is_recipient_upload and folder.folder_type in ['filiale', 'pole']:
             service_name = agent.department.name
             # ✅ Chercher le dossier service (peu importe son type actuuel)
             try:
@@ -87,8 +97,8 @@ class DocumentService:
         
         # 2️⃣ Dossier Type de Document
         if document_type:
-            # Récupérer le libellé du type
-            type_label = dict(Document.DOCUMENT_TYPE_CHOICES).get(document_type, document_type)
+            # Récupérer le libellé du type (document_type est maintenant une instance DocumentType)
+            type_label = document_type.display_name if hasattr(document_type, 'display_name') else str(document_type)
             
             # ✅ Chercher le dossier type (peu importe son type actuel)
             try:
@@ -113,12 +123,13 @@ class DocumentService:
     def create_document_with_validation(
         title: str,
         file,
-        document_type: str,
+        document_type: 'DocumentType',
         agent,
         folder=None,
         folder_id=None,
         description: str = "",
-        auto_validate: bool = True
+        auto_validate: bool = True,
+        is_recipient_upload: bool = False
     ) -> tuple:
         """
         Crée un document et lance la validation.
@@ -146,7 +157,8 @@ class DocumentService:
                 candidate_folder = Folder.objects.get(id=folder_id)
                 
                 # ✅ VALIDATION: Vérifier que le dossier est du bon Pôle
-                if agent and agent.pole:
+                # (Sauf si c'est un envoi à destinataire, où la destination est explicitement choisie)
+                if agent and agent.pole and not is_recipient_upload:
                     # Déterminer le Pôle du dossier
                     folder_pole_id = candidate_folder.parent_id if candidate_folder.parent else None
                     
@@ -176,45 +188,19 @@ class DocumentService:
             except Folder.DoesNotExist:
                 pass  # Continuer sans
         
-        # Si aucun dossier n'est fourni, essayer de le déterminer automatiquement
+        # Si aucun dossier n'est fourni, utiliser la filiale de l'agent par défaut
         if folder is None:
-            try:
-                from apps.routing_rules.models import RoutingRule
-                # Chercher la règle de routing pour ce type de document
-                routing_rule = RoutingRule.objects.filter(
-                    document_type=document_type,
-                    is_active=True
-                ).first()
-                
-                if routing_rule:
-                    # Créer un objet Document temporaire pour que get_destination_folder() l'utilise
-                    temp_doc = Document(
-                        title=title,
-                        file=file,
-                        document_type=document_type,
-                        agent=agent,
-                        description=description,
-                    )
-                    # Déterminer le dossier destination
-                    folder = routing_rule.get_destination_folder(temp_doc)
-                else:
-                    # Pas de règle de routing, utiliser la filiale de l'agent par défaut
-                    if agent.branch:
-                        folder = agent.branch
-            except Exception as e:
-                import logging
-                logger = logging.getLogger(__name__)
-                logger.warning(f"[DocumentService] Erreur lors de la détermination du dossier: {e}")
-                # En cas d'erreur, utiliser la filiale de l'agent
-                if agent.branch:
-                    folder = agent.branch
+            if agent and agent.branch:
+                folder = agent.branch
         
         # ✅ Construire la hiérarchie: Pole > Filiale > Service > Type Doc
+        # ou si c'est une envoi à destinataire: Filiale/Service destinataire > Type Doc (sans service de l'agent)
         # Si l'agent a un Service assigné, créer la structure complète
         organized_folder = DocumentService.organize_with_hierarchy(
             folder=folder,
             agent=agent,
-            document_type=document_type
+            document_type=document_type,
+            is_recipient_upload=is_recipient_upload
         )
         
         # Créer le document avec le statut d'attente de validation

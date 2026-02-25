@@ -99,6 +99,7 @@ INSTALLED_APPS = [
     'apps.folders',
     'apps.routing_rules',
     'apps.notifications',
+    'apps.scheduling.apps.SchedulingConfig',
 ]
 
 MIDDLEWARE = [

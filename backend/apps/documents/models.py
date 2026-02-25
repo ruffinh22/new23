@@ -117,7 +117,124 @@ class DocumentSpecification(models.Model):
         return json.loads(self.required_columns) if self.required_columns else []
 
 
+class DocumentType(models.Model):
+    """Modèle flexible pour gérer les types de documents dynamiquement."""
+    
+    name = models.CharField(
+        max_length=100,
+        unique=True,
+        help_text="Nom unique du type de document (ex: Facture, Congé, Rapport)"
+    )
+    display_name = models.CharField(
+        max_length=100,
+        help_text="Nom affiché dans l'interface (ex: Demande de congé)"
+    )
+    description = models.TextField(
+        blank=True,
+        help_text="Description du type de document"
+    )
+    is_active = models.BooleanField(
+        default=True,
+        help_text="Active ce type de document"
+    )
+    icon = models.CharField(
+        max_length=50,
+        blank=True,
+        default='file',
+        help_text="Icône Lucide (ex: file, file-pdf, file-text)"
+    )
+    color = models.CharField(
+        max_length=7,
+        blank=True,
+        default='#6B7280',
+        help_text="Couleur hex pour l'affichage"
+    )
+    # Validation fields
+    allowed_formats = models.CharField(
+        max_length=200,
+        blank=True,
+        default='pdf,docx,xlsx',
+        help_text="Formats autorisés (séparés par des virgules, ex: pdf,docx,xlsx)"
+    )
+    max_file_size_mb = models.IntegerField(
+        default=50,
+        help_text="Taille maximale du fichier en MB"
+    )
+    requires_excel = models.BooleanField(
+        default=False,
+        help_text="Ce type nécessite une validation Excel"
+    )
+    excel_sheet_name = models.CharField(
+        max_length=100,
+        blank=True,
+        help_text="Nom de la feuille Excel à valider"
+    )
+    required_columns = models.TextField(
+        blank=True,
+        help_text="Colonnes requises pour Excel (séparées par des virgules)"
+    )
+    max_rows = models.IntegerField(
+        null=True,
+        blank=True,
+        help_text="Nombre maximum de lignes pour Excel"
+    )
+    requires_validation = models.BooleanField(
+        default=True,
+        help_text="La validation est requise pour ce type"
+    )
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+    
+    class Meta:
+        db_table = 'document_types'
+        verbose_name = 'Type de document'
+        verbose_name_plural = 'Types de documents'
+        ordering = ['display_name']
+    
+    def __str__(self):
+        return self.display_name
+    
+    @staticmethod
+    def get_or_create_defaults():
+        """Crée les types par défaut s'ils n'existent pas."""
+        defaults = [
+            {'name': 'FACTURE', 'display_name': 'Facture', 'icon': 'file-text', 'color': '#10B981'},
+            {'name': 'BON_COMMANDE', 'display_name': 'Bon de Commande', 'icon': 'shopping-cart', 'color': '#3B82F6'},
+            {'name': 'CONTRAT', 'display_name': 'Contrat', 'icon': 'file', 'color': '#8B5CF6'},
+            {'name': 'RAPPORT', 'display_name': 'Rapport', 'icon': 'bar-chart-2', 'color': '#F59E0B'},
+            {'name': 'CONGE', 'display_name': 'Demande de congé', 'icon': 'calendar', 'color': '#EF4444'},
+            {'name': 'NOTE_FRAIS', 'display_name': 'Note de frais', 'icon': 'credit-card', 'color': '#06B6D4'},
+            {'name': 'MEDICAL', 'display_name': 'Certificat médical', 'icon': 'heart', 'color': '#EC4899'},
+            {'name': 'TEMPS', 'display_name': 'Fiche de temps', 'icon': 'clock', 'color': '#14B8A6'},
+            {'name': 'FORMATION', 'display_name': 'Demande de formation', 'icon': 'book', 'color': '#F97316'},
+            {'name': 'ADMINISTRATIF', 'display_name': 'Document administratif', 'icon': 'file-text', 'color': '#6B7280'},
+            {'name': 'JUSTIFICATIF', 'display_name': 'Justificatif', 'icon': 'check-circle', 'color': '#10B981'},
+            {'name': 'EVALUATION', 'display_name': 'Évaluation', 'icon': 'star', 'color': '#FBBF24'},
+            {'name': 'BUDGET', 'display_name': 'Budget', 'icon': 'pie-chart', 'color': '#3B82F6'},
+            {'name': 'DEMANDE', 'display_name': 'Demande', 'icon': 'inbox', 'color': '#8B5CF6'},
+            {'name': 'ATTESTATION', 'display_name': 'Attestation', 'icon': 'award', 'color': '#10B981'},
+            {'name': 'DONNEES_EXCEL', 'display_name': 'Données Excel', 'icon': 'table', 'color': '#059669'},
+            {'name': 'DONNEES_AGENTS', 'display_name': 'Données des agents', 'icon': 'users', 'color': '#0891B2'},
+            {'name': 'DONNEES_PROJETS', 'display_name': 'Données des projets', 'icon': 'briefcase', 'color': '#7C3AED'},
+            {'name': 'DONNEES_HEURES', 'display_name': 'Données des heures', 'icon': 'clock', 'color': '#DC2626'},
+            {'name': 'DONNEES_ABSENCES', 'display_name': 'Données des absences', 'icon': 'x-circle', 'color': '#EA580C'},
+            {'name': 'RAPPORT_MENSUEL', 'display_name': 'Rapport mensuel', 'icon': 'calendar', 'color': '#0369A1'},
+            {'name': 'RAPPORT_ANNUEL', 'display_name': 'Rapport annuel', 'icon': 'bar-chart-2', 'color': '#1E40AF'},
+        ]
+        
+        for doc_type in defaults:
+            DocumentType.objects.get_or_create(
+                name=doc_type['name'],
+                defaults={
+                    'display_name': doc_type['display_name'],
+                    'icon': doc_type['icon'],
+                    'color': doc_type['color'],
+                }
+            )
+
+
 class DocumentValidationResult(models.Model):
+
     """Résultat de la validation d'un document."""
     
     STATUS_CHOICES = [
@@ -157,68 +274,6 @@ class DocumentValidationResult(models.Model):
 class Document(models.Model):
     """Modèle pour les documents uploadés avec validation."""
     
-    DOCUMENT_TYPE_CHOICES = [
-        # Types commerciaux
-        ('FACTURE', 'Facture'),
-        ('BON_COMMANDE', 'Bon de Commande'),
-        ('CONTRAT', 'Contrat'),
-        ('RAPPORT', 'Rapport'),
-        
-        # Catégories traditionnelles
-        ('CONGE', 'Demande de congé'),
-        ('NOTE_FRAIS', 'Note de frais'),
-        ('MEDICAL', 'Certificat médical'),
-        ('TEMPS', 'Fiche de temps'),
-        ('FORMATION', 'Demande de formation'),
-        ('ADMINISTRATIF', 'Document administratif'),
-        ('JUSTIFICATIF', 'Justificatif'),
-        ('EVALUATION', 'Évaluation'),
-        ('BUDGET', 'Budget'),
-        ('DEMANDE', 'Demande'),
-        ('ATTESTATION', 'Attestation'),
-        
-        # Types Excel - Données
-        ('DONNEES_EXCEL', 'Données Excel'),
-        ('DONNEES_AGENTS', 'Données des agents'),
-        ('DONNEES_PROJETS', 'Données des projets'),
-        ('DONNEES_HEURES', 'Données des heures'),
-        ('DONNEES_ABSENCES', 'Données des absences'),
-        
-        # Types Excel - Exports et Rapports
-        ('EXPORT_EXCEL', 'Export Excel'),
-        ('RAPPORT_EXCEL', 'Rapport Excel'),
-        ('RAPPORT_MENSUEL', 'Rapport mensuel Excel'),
-        ('RAPPORT_ANNUEL', 'Rapport annuel Excel'),
-        ('STATISTIQUES_EXCEL', 'Statistiques Excel'),
-        
-        # Types Excel - Bulletins et Paies
-        ('BULLETINS_PAIE', 'Bulletins de paie Excel'),
-        ('FEUILLE_PAIE', 'Feuille de paie'),
-        ('CHARGES_SOCIALES', 'Charges sociales'),
-        ('DECLARATIONS_URSSAF', 'Déclarations URSSAF'),
-        
-        # Types Excel - Budgets et Finances
-        ('BUDGET_PREVISIONNEL', 'Budget prévisionnel'),
-        ('BUDGET_REALISE', 'Budget réalisé'),
-        ('FACTURES_EXCEL', 'Factures'),
-        ('DEVIS_EXCEL', 'Devis'),
-        ('DEPENSES_EXCEL', 'Dépenses'),
-        
-        # Types Excel - Planification
-        ('PLANNING_EXCEL', 'Planning'),
-        ('CALENDRIER_FORMATION', 'Calendrier de formation'),
-        ('CALENDRIER_CONGES', 'Calendrier des congés'),
-        ('CALENDRIER_PROJETS', 'Calendrier des projets'),
-        
-        # Types Excel - Divers
-        ('INVENTAIRE_EXCEL', 'Inventaire'),
-        ('NOMENCLATURE', 'Nomenclature'),
-        ('REFERENTIELS', 'Référentiels'),
-        ('IMPORTS_DONNEES', 'Imports de données'),
-        
-        ('AUTRE', 'Autre'),
-    ]
-    
     STATUS_CHOICES = [
         ('NOUVEAU', 'Nouveau'),
         ('EN_COURS', 'En cours de révision'),
@@ -234,7 +289,21 @@ class Document(models.Model):
         help_text="Document title (3-255 characters)"
     )
     file = models.FileField(upload_to=document_upload_path)
-    document_type = models.CharField(max_length=30, choices=DOCUMENT_TYPE_CHOICES)
+    document_type = models.ForeignKey(
+        DocumentType,
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name='documents',
+        help_text="Type de document"
+    )
+    # Legacy field for backward compatibility during migration
+    document_type_legacy = models.CharField(
+        max_length= 30,
+        null=True,
+        blank=True,
+        help_text="Ancien champ - sera supprimé après migration"
+    )
     description = models.TextField(blank=True)
     
     # Relations

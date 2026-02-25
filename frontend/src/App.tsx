@@ -186,6 +186,20 @@ const adminRoutes: RouteConfig[] = [
     label: 'Types de Documents',
     icon: '📋'
   },
+  {
+    path: '/email-scheduling',
+    element: Pages.EmailScheduling,
+    allowedRoles: ['ADMIN'],
+    label: 'Planification Emails',
+    icon: '📧'
+  },
+  {
+    path: '/events-management',
+    element: Pages.EventsManagement,
+    allowedRoles: ['ADMIN', 'POLE_MANAGER', 'FILIALE_MANAGER', 'SERVICE_MANAGER'],
+    label: 'Gestion Événements',
+    icon: '📅'
+  },
 ]
 
 // Shared routes (accessible by both Agent and Admin)
@@ -231,6 +245,13 @@ const sharedRoutes: RouteConfig[] = [
     allowedRoles: ['AGENT', 'ADMIN'],
     label: 'Guide Complet SGDRA',
     icon: '📖'
+  },
+  { 
+    path: '/events', 
+    element: Pages.PublicEvents, 
+    allowedRoles: ['AGENT', 'ADMIN', 'POLE_MANAGER', 'FILIALE_MANAGER', 'SERVICE_MANAGER', 'DOCUMENT_MANAGER'],
+    label: 'Événements',
+    icon: '📅'
   },
 ]
 

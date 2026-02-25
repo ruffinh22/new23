@@ -220,7 +220,7 @@ export function RoutingRulesManager() {
 
         // Charger tous les types de documents depuis l'API
         const types = await documentTypeService.getDocumentTypes();
-        setAllDocumentTypes(types);
+        setAllDocumentTypes(types.map(t => ({value: String(t.id), label: t.display_name})));
 
         // Charger les dossiers
         await fetchFolders();
@@ -276,7 +276,7 @@ export function RoutingRulesManager() {
         `/routing-rules/document-types/by_department/?department=${selectedDept}`
       );
       const data = response.data;
-      setAllDocumentTypes(Array.isArray(data.document_types) ? data.document_types : []);
+      setAllDocumentTypes(Array.isArray(data.document_types) ? data.document_types.map((t: any) => ({value: String(t.id), label: t.display_name})) : []);
       setError('');
     } catch (err: any) {
       setError(err.response?.data?.detail || 'Erreur lors du chargement des types');

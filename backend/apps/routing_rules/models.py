@@ -340,8 +340,8 @@ class RoutingRule(models.Model):
                     
                     # 5️⃣ Type de Document
                     if path_config.get('include_document_type', True) and document.document_type:
-                        # Récupérer le libellé du type
-                        type_label = dict(document.DOCUMENT_TYPE_CHOICES if hasattr(document, 'DOCUMENT_TYPE_CHOICES') else []).get(document.document_type, document.document_type)
+                        # Récupérer le libellé du type (document_type est une ForeignKey à DocumentType)
+                        type_label = document.document_type.display_name if document.document_type else 'Unknown'
                         
                         if current_folder:
                             type_folder, created = Folder.objects.get_or_create(

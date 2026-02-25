@@ -5,11 +5,13 @@ from .views import (
     DocumentSpecificationViewSet,
     DocumentValidationResultViewSet,
     DocumentShareViewSet,
+    DocumentTypeViewSet,
 )
 from .file_config_views import FileTypeConfigurationViewSet
 from .viewsets_templates import DocumentTemplateViewSet
 
 router = SafeDefaultRouter()
+router.register(r'types', DocumentTypeViewSet, basename='document-type')
 router.register(r'templates', DocumentTemplateViewSet, basename='document-template')
 router.register(r'file-type-configurations', FileTypeConfigurationViewSet, basename='file-type-configuration')
 router.register(r'specifications', DocumentSpecificationViewSet, basename='document-specification')
