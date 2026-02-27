@@ -7,7 +7,6 @@ import django.db.models.deletion
 
 
 class Migration(migrations.Migration):
-
     dependencies = [
         ("routing_rules", "0001_initial"),
         ("folders", "0007_alter_folder_folder_type"),

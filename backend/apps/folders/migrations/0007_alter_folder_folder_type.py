@@ -4,7 +4,6 @@ from django.db import migrations, models
 
 
 class Migration(migrations.Migration):
-
     dependencies = [
         ("folders", "0006_correct_8_poles_7_filiales"),
     ]

@@ -6,66 +6,175 @@ import django.db.models.deletion
 
 def create_document_types(apps, schema_editor):
     """Créer les types de documents par défaut."""
-    DocumentType = apps.get_model('documents', 'DocumentType')
-    
+    DocumentType = apps.get_model("documents", "DocumentType")
+
     defaults = [
-        {'name': 'FACTURE', 'display_name': 'Facture', 'icon': 'file-text', 'color': '#10B981'},
-        {'name': 'BON_COMMANDE', 'display_name': 'Bon de Commande', 'icon': 'shopping-cart', 'color': '#3B82F6'},
-        {'name': 'CONTRAT', 'display_name': 'Contrat', 'icon': 'file', 'color': '#8B5CF6'},
-        {'name': 'RAPPORT', 'display_name': 'Rapport', 'icon': 'bar-chart-2', 'color': '#F59E0B'},
-        {'name': 'CONGE', 'display_name': 'Demande de congé', 'icon': 'calendar', 'color': '#EF4444'},
-        {'name': 'NOTE_FRAIS', 'display_name': 'Note de frais', 'icon': 'credit-card', 'color': '#06B6D4'},
-        {'name': 'MEDICAL', 'display_name': 'Certificat médical', 'icon': 'heart', 'color': '#EC4899'},
-        {'name': 'TEMPS', 'display_name': 'Fiche de temps', 'icon': 'clock', 'color': '#14B8A6'},
-        {'name': 'FORMATION', 'display_name': 'Demande de formation', 'icon': 'book', 'color': '#F97316'},
-        {'name': 'ADMINISTRATIF', 'display_name': 'Document administratif', 'icon': 'file-text', 'color': '#6B7280'},
-        {'name': 'JUSTIFICATIF', 'display_name': 'Justificatif', 'icon': 'check-circle', 'color': '#10B981'},
-        {'name': 'EVALUATION', 'display_name': 'Évaluation', 'icon': 'star', 'color': '#FBBF24'},
-        {'name': 'BUDGET', 'display_name': 'Budget', 'icon': 'pie-chart', 'color': '#3B82F6'},
-        {'name': 'DEMANDE', 'display_name': 'Demande', 'icon': 'inbox', 'color': '#8B5CF6'},
-        {'name': 'ATTESTATION', 'display_name': 'Attestation', 'icon': 'award', 'color': '#10B981'},
-        {'name': 'DONNEES_EXCEL', 'display_name': 'Données Excel', 'icon': 'table', 'color': '#059669'},
-        {'name': 'DONNEES_AGENTS', 'display_name': 'Données des agents', 'icon': 'users', 'color': '#0891B2'},
-        {'name': 'DONNEES_PROJETS', 'display_name': 'Données des projets', 'icon': 'briefcase', 'color': '#7C3AED'},
-        {'name': 'DONNEES_HEURES', 'display_name': 'Données des heures', 'icon': 'clock', 'color': '#DC2626'},
-        {'name': 'DONNEES_ABSENCES', 'display_name': 'Données des absences', 'icon': 'x-circle', 'color': '#EA580C'},
-        {'name': 'RAPPORT_MENSUEL', 'display_name': 'Rapport mensuel', 'icon': 'calendar', 'color': '#0369A1'},
-        {'name': 'RAPPORT_ANNUEL', 'display_name': 'Rapport annuel', 'icon': 'bar-chart-2', 'color': '#1E40AF'},
+        {
+            "name": "FACTURE",
+            "display_name": "Facture",
+            "icon": "file-text",
+            "color": "#10B981",
+        },
+        {
+            "name": "BON_COMMANDE",
+            "display_name": "Bon de Commande",
+            "icon": "shopping-cart",
+            "color": "#3B82F6",
+        },
+        {
+            "name": "CONTRAT",
+            "display_name": "Contrat",
+            "icon": "file",
+            "color": "#8B5CF6",
+        },
+        {
+            "name": "RAPPORT",
+            "display_name": "Rapport",
+            "icon": "bar-chart-2",
+            "color": "#F59E0B",
+        },
+        {
+            "name": "CONGE",
+            "display_name": "Demande de congé",
+            "icon": "calendar",
+            "color": "#EF4444",
+        },
+        {
+            "name": "NOTE_FRAIS",
+            "display_name": "Note de frais",
+            "icon": "credit-card",
+            "color": "#06B6D4",
+        },
+        {
+            "name": "MEDICAL",
+            "display_name": "Certificat médical",
+            "icon": "heart",
+            "color": "#EC4899",
+        },
+        {
+            "name": "TEMPS",
+            "display_name": "Fiche de temps",
+            "icon": "clock",
+            "color": "#14B8A6",
+        },
+        {
+            "name": "FORMATION",
+            "display_name": "Demande de formation",
+            "icon": "book",
+            "color": "#F97316",
+        },
+        {
+            "name": "ADMINISTRATIF",
+            "display_name": "Document administratif",
+            "icon": "file-text",
+            "color": "#6B7280",
+        },
+        {
+            "name": "JUSTIFICATIF",
+            "display_name": "Justificatif",
+            "icon": "check-circle",
+            "color": "#10B981",
+        },
+        {
+            "name": "EVALUATION",
+            "display_name": "Évaluation",
+            "icon": "star",
+            "color": "#FBBF24",
+        },
+        {
+            "name": "BUDGET",
+            "display_name": "Budget",
+            "icon": "pie-chart",
+            "color": "#3B82F6",
+        },
+        {
+            "name": "DEMANDE",
+            "display_name": "Demande",
+            "icon": "inbox",
+            "color": "#8B5CF6",
+        },
+        {
+            "name": "ATTESTATION",
+            "display_name": "Attestation",
+            "icon": "award",
+            "color": "#10B981",
+        },
+        {
+            "name": "DONNEES_EXCEL",
+            "display_name": "Données Excel",
+            "icon": "table",
+            "color": "#059669",
+        },
+        {
+            "name": "DONNEES_AGENTS",
+            "display_name": "Données des agents",
+            "icon": "users",
+            "color": "#0891B2",
+        },
+        {
+            "name": "DONNEES_PROJETS",
+            "display_name": "Données des projets",
+            "icon": "briefcase",
+            "color": "#7C3AED",
+        },
+        {
+            "name": "DONNEES_HEURES",
+            "display_name": "Données des heures",
+            "icon": "clock",
+            "color": "#DC2626",
+        },
+        {
+            "name": "DONNEES_ABSENCES",
+            "display_name": "Données des absences",
+            "icon": "x-circle",
+            "color": "#EA580C",
+        },
+        {
+            "name": "RAPPORT_MENSUEL",
+            "display_name": "Rapport mensuel",
+            "icon": "calendar",
+            "color": "#0369A1",
+        },
+        {
+            "name": "RAPPORT_ANNUEL",
+            "display_name": "Rapport annuel",
+            "icon": "bar-chart-2",
+            "color": "#1E40AF",
+        },
     ]
-    
+
     for doc_type in defaults:
         DocumentType.objects.get_or_create(
-            name=doc_type['name'],
+            name=doc_type["name"],
             defaults={
-                'display_name': doc_type['display_name'],
-                'icon': doc_type['icon'],
-                'color': doc_type['color'],
-            }
+                "display_name": doc_type["display_name"],
+                "icon": doc_type["icon"],
+                "color": doc_type["color"],
+            },
         )
 
 
 def migrate_document_types_data(apps, schema_editor):
     """Migrer les anciennes valeurs document_type vers la nouvelle table."""
-    Document = apps.get_model('documents', 'Document')
-    DocumentType = apps.get_model('documents', 'DocumentType')
-    
+    Document = apps.get_model("documents", "Document")
+    DocumentType = apps.get_model("documents", "DocumentType")
+
     for doc in Document.objects.filter(document_type_legacy__isnull=False):
         try:
             doc_type_obj = DocumentType.objects.get(name=doc.document_type_legacy)
             doc.document_type = doc_type_obj
-            doc.save(update_fields=['document_type'])
+            doc.save(update_fields=["document_type"])
         except DocumentType.DoesNotExist:
             # Si le type n'existe pas, créer une nouvelle entrée
             doc_type_obj = DocumentType.objects.create(
                 name=doc.document_type_legacy,
-                display_name=doc.document_type_legacy.replace('_', ' ')
+                display_name=doc.document_type_legacy.replace("_", " "),
             )
             doc.document_type = doc_type_obj
-            doc.save(update_fields=['document_type'])
+            doc.save(update_fields=["document_type"])
 
 
 class Migration(migrations.Migration):
-
     dependencies = [
         (
             "documents",

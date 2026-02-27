@@ -17,4 +17,3 @@ Signals for Folder creation/updates can be added here if needed in the future.
 
 # Signals for Branch and Department have been removed as these models are now legacy.
 # All organizational hierarchy is managed through the Folder model.
-

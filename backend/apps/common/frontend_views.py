@@ -2,6 +2,7 @@
 Frontend Views - Serve React SPA
 Gère le serving du frontend React avec support complet du routing client-side
 """
+
 from django.http import FileResponse, HttpResponse, Http404
 from django.views import View
 from django.conf import settings
@@ -16,92 +17,107 @@ logger = logging.getLogger(__name__)
 class FrontendView(View):
     """
     Sert le frontend React (Single Page Application)
-    
+
     Fonctionnalités:
     - Serve index.html pour toutes les routes frontend
     - Support du routing client-side (React Router)
     - Cache control approprié
     - Messages d'erreur utiles en développement
     """
-    
-    @method_decorator(cache_control(max_age=0, no_cache=True, no_store=True, must_revalidate=True))
+
+    @method_decorator(
+        cache_control(max_age=0, no_cache=True, no_store=True, must_revalidate=True)
+    )
     def dispatch(self, *args, **kwargs):
         """Désactiver le cache pour index.html (permet hot reload en dev)"""
         return super().dispatch(*args, **kwargs)
-    
+
     def get(self, request, *args, **kwargs):
         """
         Sert le fichier index.html du frontend React
-        
+
         Les assets statiques (JS, CSS, images) sont gérés par WhiteNoise middleware
         Seul le fichier HTML principal est servi ici pour gérer le routing SPA
         """
         # Chemin vers index.html - d'abord dans STATIC_DIRS (dev), puis STATIC_ROOT (prod)
         frontend_index = None
-        
+
         # Essayer STATIC_DIRS d'abord (développement)
-        static_dirs = getattr(settings, 'STATIC_DIRS', [])
-        logger.info(f"FrontendView: Looking for index.html in STATIC_DIRS: {static_dirs}")
+        static_dirs = getattr(settings, "STATIC_DIRS", [])
+        logger.info(
+            f"FrontendView: Looking for index.html in STATIC_DIRS: {static_dirs}"
+        )
         for static_dir in static_dirs:
-            candidate = Path(static_dir) / 'frontend' / 'index.html'
+            candidate = Path(static_dir) / "frontend" / "index.html"
             if candidate.exists() and candidate.is_file():
                 frontend_index = candidate
                 logger.info(f"FrontendView: Found index.html at {frontend_index}")
                 break
-        
+
         # Fallback vers STATIC_ROOT (production après collectstatic)
         if not frontend_index:
-            static_root = getattr(settings, 'STATIC_ROOT', None)
-            logger.info(f"FrontendView: Not found in STATIC_DIRS, checking STATIC_ROOT: {static_root}")
+            static_root = getattr(settings, "STATIC_ROOT", None)
+            logger.info(
+                f"FrontendView: Not found in STATIC_DIRS, checking STATIC_ROOT: {static_root}"
+            )
             if static_root:
-                candidate = Path(static_root) / 'frontend' / 'index.html'
+                candidate = Path(static_root) / "frontend" / "index.html"
                 if candidate.exists() and candidate.is_file():
                     frontend_index = candidate
                     logger.info(f"FrontendView: Found index.html at {frontend_index}")
-        
+
         # Vérifier l'existence du fichier
         if not frontend_index:
-            logger.error(f"FrontendView: Frontend index.html not found in STATIC_DIRS or STATIC_ROOT")
-            
+            logger.error(
+                "FrontendView: Frontend index.html not found in STATIC_DIRS or STATIC_ROOT"
+            )
+
             if settings.DEBUG:
                 return self._render_debug_page()
-            
+
             # En production, lever une 404
             raise Http404("Frontend application not found")
-        
+
         # Servir le fichier HTML
         try:
             logger.info(f"FrontendView: Serving frontend from: {frontend_index}")
             return FileResponse(
-                open(frontend_index, 'rb'),
-                content_type='text/html; charset=utf-8'
+                open(frontend_index, "rb"), content_type="text/html; charset=utf-8"
             )
         except IOError as e:
             logger.error(f"FrontendView: Error reading frontend index.html: {e}")
             raise Http404("Error loading frontend application")
-    
+
     def _render_debug_page(self):
         """
         Page d'aide en développement quand le frontend n'est pas build
         """
         base_dir = settings.BASE_DIR
         project_root = base_dir.parent
-        
+
         # Vérifier les chemins possibles
         checks = {
-            'Frontend directory exists': (project_root / 'frontend').exists(),
-            'package.json exists': (project_root / 'frontend' / 'package.json').exists(),
-            'vite.config.ts exists': (project_root / 'frontend' / 'vite.config.ts').exists(),
-            'dist/ exists': (project_root / 'frontend' / 'dist').exists(),
-            'static/frontend/ exists': (base_dir / 'static' / 'frontend').exists(),
-            'static/frontend/index.html exists': (base_dir / 'static' / 'frontend' / 'index.html').exists(),
+            "Frontend directory exists": (project_root / "frontend").exists(),
+            "package.json exists": (
+                project_root / "frontend" / "package.json"
+            ).exists(),
+            "vite.config.ts exists": (
+                project_root / "frontend" / "vite.config.ts"
+            ).exists(),
+            "dist/ exists": (project_root / "frontend" / "dist").exists(),
+            "static/frontend/ exists": (base_dir / "static" / "frontend").exists(),
+            "static/frontend/index.html exists": (
+                base_dir / "static" / "frontend" / "index.html"
+            ).exists(),
         }
-        
-        checks_html = ''.join([
-            f'<li style="color: {"green" if status else "red"}">{"✅" if status else "❌"} {check}</li>'
-            for check, status in checks.items()
-        ])
-        
+
+        checks_html = "".join(
+            [
+                f'<li style="color: {"green" if status else "red"}">{"✅" if status else "❌"} {check}</li>'
+                for check, status in checks.items()
+            ]
+        )
+
         html = f"""
         <!DOCTYPE html>
         <html lang="fr">
@@ -310,5 +326,7 @@ python manage.py collectstatic --noinput</pre>
         </body>
         </html>
         """
-        
-        return HttpResponse(content=html, status=503, content_type='text/html; charset=utf-8')
+
+        return HttpResponse(
+            content=html, status=503, content_type="text/html; charset=utf-8"
+        )

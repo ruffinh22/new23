@@ -3,8 +3,8 @@ from apps.common.routers import SafeDefaultRouter
 from .views import NotificationViewSet
 
 router = SafeDefaultRouter()
-router.register(r'', NotificationViewSet, basename='notification')
+router.register(r"", NotificationViewSet, basename="notification")
 
 urlpatterns = [
-    path('', include(router.urls)),
+    path("", include(router.urls)),
 ]

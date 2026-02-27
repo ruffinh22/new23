@@ -311,7 +311,7 @@ export const AgentDocuments: React.FC = () => {
               {activeTab === 'all' ? (
               // TAB: Tous les documents
               <div className="grid grid-cols-1 lg:grid-cols-4 gap-6">
-                {/* Sidebar: Folder Tree */}
+                {/* Sidebar: Folder Tree - For both admins and agents */}
                 <div className="lg:col-span-1">
                   <div className="card p-6">
                     <h2 className="text-lg font-bold text-gray-900 mb-4">📁 Dossiers</h2>

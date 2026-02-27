@@ -6,5 +6,3 @@ Includes:
 - Logging configuration (logging_config.py)
 - Audit signals (signals.py)
 """
-
-

@@ -70,16 +70,20 @@ export const EditUserModal: React.FC<EditUserModalProps> = ({ isOpen, user, onCl
   useEffect(() => {
     if (!poleValue) {
       setFiliales([])
+      setServices([])
       return
     }
     const loadFiliales = async () => {
       try {
+        console.log('[EditUserModal] Loading filiales for pole:', poleValue)
         const filialesData = await folderService.getFiliales(poleValue)
+        console.log('[EditUserModal] Filiales loaded:', filialesData)
         // Trier alphabétiquement
         filialesData.sort((a: any, b: any) => a.name.localeCompare(b.name))
         setFiliales(filialesData)
       } catch (err) {
-        console.error('Error loading filiales:', err)
+        console.error('[EditUserModal] Error loading filiales:', err)
+        setFiliales([])
       }
     }
     loadFiliales()

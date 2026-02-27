@@ -35,7 +35,7 @@ export const Folders: React.FC = () => {
     try {
       setLoading(true)
       // Backend retourne déjà une arborescence imbriquée avec 'children'
-      const response = await apiClient.get('/folders/folders/tree/')
+      const response = await apiClient.get('folders/tree/')
       const treeData = Array.isArray(response.data) ? response.data : []
       
       // Garder la structure arborescente telle quelle
@@ -151,7 +151,7 @@ export const Folders: React.FC = () => {
     try {
       if (editingFolder) {
         // Update existing folder
-        await apiClient.put(`/folders/folders/${editingFolder.id}/`, {
+        await apiClient.put(`/folders/${editingFolder.id}/`, {
           name: formData.name,
           description: formData.description,
           folder_type: formData.folderType,
@@ -159,7 +159,7 @@ export const Folders: React.FC = () => {
         })
       } else {
         // Create new folder
-        await apiClient.post('/folders/folders/', {
+        await apiClient.post('/folders/', {
           name: formData.name,
           description: formData.description,
           folder_type: formData.folderType,
@@ -177,7 +177,7 @@ export const Folders: React.FC = () => {
   const handleDelete = async (id: string | number) => {
     if (confirm('Êtes-vous sûr de vouloir supprimer ce dossier?')) {
       try {
-        await apiClient.delete(`/folders/folders/${id}/`)
+        await apiClient.delete(`/folders/${id}/`)
         await fetchFolders()
       } catch (err: any) {
         console.error('Error deleting folder:', err)

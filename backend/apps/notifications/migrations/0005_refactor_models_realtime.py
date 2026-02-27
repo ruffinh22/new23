@@ -6,7 +6,6 @@ import django.db.models.deletion
 
 
 class Migration(migrations.Migration):
-
     dependencies = [
         ("documents", "0005_refactor_models_realtime"),
         migrations.swappable_dependency(settings.AUTH_USER_MODEL),

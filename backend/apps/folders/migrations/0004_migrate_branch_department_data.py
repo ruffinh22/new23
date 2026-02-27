@@ -5,65 +5,62 @@ from django.db import migrations
 
 def migrate_branch_department_data(apps, schema_editor):
     """Migrer les données de Branch/Department vers Folder types."""
-    Folder = apps.get_model('folders', 'Folder')
-    
+    Folder = apps.get_model("folders", "Folder")
+
     # Check if Branch and Department models still exist (for legacy databases)
     try:
-        Branch = apps.get_model('users', 'Branch')
+        Branch = apps.get_model("users", "Branch")
         has_branch = True
     except LookupError:
         has_branch = False
-    
+
     try:
-        Department = apps.get_model('users', 'Department')
+        Department = apps.get_model("users", "Department")
         has_department = True
     except LookupError:
         has_department = False
-    
+
     # Script de migration
     print("\n🔄 Migration des données Branch/Department → Folder types...")
-    
+
     # 1. Migrer les Folders de Branch (type='branch') si le modèle existe
     if has_branch:
         print("\n📦 Traitement des Branches...")
         for branch in Branch.objects.filter(folder__isnull=False):
             folder = branch.folder
-            folder.folder_type = 'branch'
+            folder.folder_type = "branch"
             folder.code = branch.code
             folder.country_code = branch.country_code
-            folder.save(update_fields=['folder_type', 'code', 'country_code'])
+            folder.save(update_fields=["folder_type", "code", "country_code"])
             print(f"  ✅ {branch.name}: folder type='branch', code='{branch.code}'")
     else:
-        print("\n📦 Les modèles Branch & Department n'existent plus - migration ignorée (DB en base nouveau)")
-    
+        print(
+            "\n📦 Les modèles Branch & Department n'existent plus - migration ignorée (DB en base nouveau)"
+        )
+
     # 2. Migrer les Folders de Department (type='department') si le modèle existe
     if has_department:
         print("\n📦 Traitement des Departments...")
         for dept in Department.objects.filter(folder__isnull=False):
             folder = dept.folder
-            folder.folder_type = 'department'
+            folder.folder_type = "department"
             folder.code = dept.code
-            folder.save(update_fields=['folder_type', 'code'])
+            folder.save(update_fields=["folder_type", "code"])
             print(f"  ✅ {dept.name}: folder type='department', code='{dept.code}'")
-    
+
     print("\n✅ Migration des données terminée!")
 
 
 def reverse_migration(apps, schema_editor):
     """Fonction inverse (rollback)."""
-    Folder = apps.get_model('folders', 'Folder')
-    
+    Folder = apps.get_model("folders", "Folder")
+
     print("\n🔄 Rollback: réinitialisation des types de Folder...")
-    Folder.objects.all().update(
-        folder_type='section',
-        code=None,
-        country_code=None
-    )
+    Folder.objects.all().update(folder_type="section", code=None, country_code=None)
     print("✅ Rollback terminé!")
 
 
 class Migration(migrations.Migration):
-
     dependencies = [
         ("folders", "0003_unified_hierarchy_add_type_and_codes"),
     ]

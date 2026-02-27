@@ -9,66 +9,71 @@ def cleanup_folder_types_and_link_departments(apps, schema_editor):
     1. Marquer tous les Folders de niveau 1 comme 'department'
     2. Lier les Departments orphelins à leurs Folders correspondantes
     """
-    Folder = apps.get_model('folders', 'Folder')
-    
+    Folder = apps.get_model("folders", "Folder")
+
     # Check if Branch and Department models still exist
     try:
-        Branch = apps.get_model('users', 'Branch')
+        Branch = apps.get_model("users", "Branch")
         has_branch = True
     except LookupError:
         has_branch = False
-    
+
     try:
-        Department = apps.get_model('users', 'Department')
+        Department = apps.get_model("users", "Department")
         has_department = True
     except LookupError:
         has_department = False
-    
+
     print("\n🧹 Nettoyage des types de Folder et des Departments orphelins...")
-    
+
     if not has_branch and not has_department:
         print("\n📦 Les modèles Branch & Department n'existent plus - cleanup ignorée")
         return
-    
+
     # 1. Marquer tous les Folders enfants des branches comme 'department'
     print("\n📦 Traitement des Folders niveau 1 (enfants de branches)...")
     if has_branch:
-        for branch_folder in Folder.objects.filter(folder_type='branch'):
-            children = branch_folder.children.filter(folder_type='section')
+        for branch_folder in Folder.objects.filter(folder_type="branch"):
+            children = branch_folder.children.filter(folder_type="section")
             for folder in children:
-                folder.folder_type = 'department'
-                folder.save(update_fields=['folder_type'])
+                folder.folder_type = "department"
+                folder.save(update_fields=["folder_type"])
             if children.count() > 0:
-                print(f"  ✅ {branch_folder.name}: {children.count()} enfants → type='department'")
-    
+                print(
+                    f"  ✅ {branch_folder.name}: {children.count()} enfants → type='department'"
+                )
+
     # 2. Lier les Departments orphelins à leurs Folders
     if has_department:
         print("\n📦 Recherche et liaison des Departments orphelins...")
-        
+
         orphan_count = 0
         # Departments avec branche assignée (Administration, Finance, Informatique, RH pour Bénin)
         if has_branch:
-            for dept in Department.objects.filter(folder__isnull=True, branch__isnull=False):
+            for dept in Department.objects.filter(
+                folder__isnull=True, branch__isnull=False
+            ):
                 # Chercher un Folder correspondant
                 branch_folder = dept.branch.folder
                 matching_folder = branch_folder.children.filter(
-                    name=dept.name,
-                    folder_type='department'
+                    name=dept.name, folder_type="department"
                 ).first()
-                
+
                 if matching_folder:
                     dept.folder = matching_folder
-                    dept.save(update_fields=['folder'])
+                    dept.save(update_fields=["folder"])
                     orphan_count += 1
                     print(f"  ✅ {dept.name} ({dept.branch.name}): lié au Folder")
                 else:
-                    print(f"  ⚠️ {dept.name} ({dept.branch.name}): AUCUN Folder correspondant trouvé")
-        
+                    print(
+                        f"  ⚠️ {dept.name} ({dept.branch.name}): AUCUN Folder correspondant trouvé"
+                    )
+
         # Departments sans branche assignée (Commercial, Direction, Finance, Logistique, Technique)
-        print(f"\n📦 Departments globaux (sans branche)...")
+        print("\n📦 Departments globaux (sans branche)...")
         for dept in Department.objects.filter(folder__isnull=True, branch__isnull=True):
             print(f"  ❌ {dept.name}: Aucune branche assignée - À gérer manuellement")
-        
+
         print(f"\n✅ Nettoyage terminé! ({orphan_count} Departments liés)")
     else:
         print("\n✅ Nettoyage terminé! (pas de Department model)")
@@ -76,35 +81,38 @@ def cleanup_folder_types_and_link_departments(apps, schema_editor):
 
 def reverse_cleanup(apps, schema_editor):
     """Rollback: réinitialiser les types."""
-    Folder = apps.get_model('folders', 'Folder')
-    
+    Folder = apps.get_model("folders", "Folder")
+
     # Check if Department model still exists
     try:
-        Department = apps.get_model('users', 'Department')
+        Department = apps.get_model("users", "Department")
         has_department = True
     except LookupError:
         has_department = False
-    
+
     print("\n🔄 Rollback: réinitialisation des types...")
-    
+
     # Remettre les enfants de branches à 'section'
-    for folder in Folder.objects.filter(parent__isnull=False, parent__folder_type='branch'):
-        folder.folder_type = 'section'
-        folder.save(update_fields=['folder_type'])
-    
+    for folder in Folder.objects.filter(
+        parent__isnull=False, parent__folder_type="branch"
+    ):
+        folder.folder_type = "section"
+        folder.save(update_fields=["folder_type"])
+
     # Dé-lier les Departments si le modèle existe
     if has_department:
         Department.objects.update(folder=None)
-    
+
     print("✅ Rollback terminé!")
 
 
 class Migration(migrations.Migration):
-
     dependencies = [
         ("folders", "0004_migrate_branch_department_data"),
     ]
 
     operations = [
-        migrations.RunPython(cleanup_folder_types_and_link_departments, reverse_cleanup),
+        migrations.RunPython(
+            cleanup_folder_types_and_link_departments, reverse_cleanup
+        ),
     ]

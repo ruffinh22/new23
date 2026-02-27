@@ -5,7 +5,6 @@ import django.db.models.deletion
 
 
 class Migration(migrations.Migration):
-
     dependencies = [
         ("folders", "0007_alter_folder_folder_type"),
         ("users", "0001_initial"),

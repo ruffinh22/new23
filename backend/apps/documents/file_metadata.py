@@ -10,7 +10,7 @@ Extrait les informations complètes des fichiers selon leur type:
 
 import io
 import csv
-from typing import Dict, Any, Optional
+from typing import Dict, Any
 from django.core.files.uploadedfile import UploadedFile
 import logging
 
@@ -33,33 +33,35 @@ class FileMetadataExtractor:
         """
         file_name = file.name.lower()
         metadata = {
-            'file_size_kb': file.size / 1024,
-            'file_size_mb': file.size / (1024 * 1024),
+            "file_size_kb": file.size / 1024,
+            "file_size_mb": file.size / (1024 * 1024),
         }
 
         try:
             # Déterminer le type de fichier
-            if file_name.endswith('.pdf'):
+            if file_name.endswith(".pdf"):
                 metadata.update(FileMetadataExtractor._extract_pdf_metadata(file))
 
-            elif file_name.endswith(('.xlsx', '.xlsm', '.xls', '.ods')):
-                metadata.update(FileMetadataExtractor._extract_spreadsheet_metadata(file))
+            elif file_name.endswith((".xlsx", ".xlsm", ".xls", ".ods")):
+                metadata.update(
+                    FileMetadataExtractor._extract_spreadsheet_metadata(file)
+                )
 
-            elif file_name.endswith(('.csv', '.tsv')):
+            elif file_name.endswith((".csv", ".tsv")):
                 metadata.update(FileMetadataExtractor._extract_csv_metadata(file))
 
-            elif file_name.endswith(('.png', '.jpg', '.jpeg', '.gif', '.webp', '.bmp')):
+            elif file_name.endswith((".png", ".jpg", ".jpeg", ".gif", ".webp", ".bmp")):
                 metadata.update(FileMetadataExtractor._extract_image_metadata(file))
 
-            elif file_name.endswith(('.docx', '.doc')):
+            elif file_name.endswith((".docx", ".doc")):
                 metadata.update(FileMetadataExtractor._extract_document_metadata(file))
 
-            elif file_name.endswith('.zip'):
+            elif file_name.endswith(".zip"):
                 metadata.update(FileMetadataExtractor._extract_zip_metadata(file))
 
         except Exception as e:
             logger.warning(f"Erreur extraction métadonnées {file_name}: {str(e)}")
-            metadata['extraction_error'] = str(e)
+            metadata["extraction_error"] = str(e)
 
         return metadata
 
@@ -68,30 +70,34 @@ class FileMetadataExtractor:
         """Extrait métadonnées PDF (nombre de pages)."""
         try:
             import PyPDF2
+
             file.seek(0)
             pdf_reader = PyPDF2.PdfReader(file)
             return {
-                'pages': len(pdf_reader.pages),
-                'is_encrypted': pdf_reader.is_encrypted,
+                "pages": len(pdf_reader.pages),
+                "is_encrypted": pdf_reader.is_encrypted,
             }
         except ImportError:
-            logger.warning("PyPDF2 non installé, impossible de lire les métadonnées PDF")
-            return {'pages': None}
+            logger.warning(
+                "PyPDF2 non installé, impossible de lire les métadonnées PDF"
+            )
+            return {"pages": None}
         except Exception as e:
             logger.warning(f"Erreur lecture PDF: {str(e)}")
-            return {'pages': None}
+            return {"pages": None}
 
     @staticmethod
     def _extract_spreadsheet_metadata(file: UploadedFile) -> Dict[str, Any]:
         """Extrait métadonnées pour feuilles de calcul (Excel, ODS)."""
         try:
             import openpyxl
+
             file.seek(0)
             wb = openpyxl.load_workbook(file, data_only=True)
 
             metadata = {
-                'sheets': len(wb.sheetnames),
-                'sheet_names': wb.sheetnames,
+                "sheets": len(wb.sheetnames),
+                "sheet_names": wb.sheetnames,
             }
 
             # Analyser chaque feuille
@@ -105,18 +111,18 @@ class FileMetadataExtractor:
                 if ws.max_column > max_cols:
                     max_cols = ws.max_column
 
-            metadata['rows'] = max_rows
-            metadata['columns'] = max_cols
+            metadata["rows"] = max_rows
+            metadata["columns"] = max_cols
 
             wb.close()
             return metadata
 
         except ImportError:
             logger.warning("openpyxl non installé")
-            return {'sheets': None, 'rows': None, 'columns': None}
+            return {"sheets": None, "rows": None, "columns": None}
         except Exception as e:
             logger.warning(f"Erreur lecture Excel: {str(e)}")
-            return {'sheets': None, 'rows': None, 'columns': None}
+            return {"sheets": None, "rows": None, "columns": None}
 
     @staticmethod
     def _extract_csv_metadata(file: UploadedFile) -> Dict[str, Any]:
@@ -124,10 +130,10 @@ class FileMetadataExtractor:
         try:
             file.seek(0)
             # Déterminer le délimiteur
-            delimiter = '\t' if file.name.lower().endswith('.tsv') else ','
+            delimiter = "\t" if file.name.lower().endswith(".tsv") else ","
 
             # Lire le fichier
-            text_file = io.TextIOWrapper(file.file, encoding='utf-8')
+            text_file = io.TextIOWrapper(file.file, encoding="utf-8")
             reader = csv.reader(text_file, delimiter=delimiter)
 
             rows = 0
@@ -140,42 +146,44 @@ class FileMetadataExtractor:
 
             file.seek(0)
             return {
-                'rows': rows,
-                'columns': columns,
+                "rows": rows,
+                "columns": columns,
             }
 
         except Exception as e:
             logger.warning(f"Erreur lecture CSV: {str(e)}")
-            return {'rows': None, 'columns': None}
+            return {"rows": None, "columns": None}
 
     @staticmethod
     def _extract_image_metadata(file: UploadedFile) -> Dict[str, Any]:
         """Extrait métadonnées images (dimensions)."""
         try:
             from PIL import Image
+
             file.seek(0)
             img = Image.open(file)
             width, height = img.size
 
             file.seek(0)
             return {
-                'width': width,
-                'height': height,
-                'format': img.format,
+                "width": width,
+                "height": height,
+                "format": img.format,
             }
 
         except ImportError:
             logger.warning("Pillow non installé")
-            return {'width': None, 'height': None}
+            return {"width": None, "height": None}
         except Exception as e:
             logger.warning(f"Erreur lecture image: {str(e)}")
-            return {'width': None, 'height': None}
+            return {"width": None, "height": None}
 
     @staticmethod
     def _extract_document_metadata(file: UploadedFile) -> Dict[str, Any]:
         """Extrait métadonnées documents (Word - pages estimées)."""
         try:
             from docx import Document
+
             file.seek(0)
             doc = Document(file)
 
@@ -186,22 +194,23 @@ class FileMetadataExtractor:
 
             file.seek(0)
             return {
-                'paragraphs': paragraph_count,
-                'estimated_pages': estimated_pages,
+                "paragraphs": paragraph_count,
+                "estimated_pages": estimated_pages,
             }
 
         except ImportError:
             logger.warning("python-docx non installé")
-            return {'paragraphs': None, 'estimated_pages': None}
+            return {"paragraphs": None, "estimated_pages": None}
         except Exception as e:
             logger.warning(f"Erreur lecture DOCX: {str(e)}")
-            return {'paragraphs': None, 'estimated_pages': None}
+            return {"paragraphs": None, "estimated_pages": None}
 
     @staticmethod
     def _extract_zip_metadata(file: UploadedFile) -> Dict[str, Any]:
         """Extrait métadonnées ZIP (nombre de fichiers)."""
         try:
             import zipfile
+
             file.seek(0)
             with zipfile.ZipFile(file) as zf:
                 file_count = len(zf.namelist())
@@ -209,10 +218,10 @@ class FileMetadataExtractor:
 
             file.seek(0)
             return {
-                'files': file_count,
-                'uncompressed_size_mb': total_uncompressed / (1024 * 1024),
+                "files": file_count,
+                "uncompressed_size_mb": total_uncompressed / (1024 * 1024),
             }
 
         except Exception as e:
             logger.warning(f"Erreur lecture ZIP: {str(e)}")
-            return {'files': None}
+            return {"files": None}

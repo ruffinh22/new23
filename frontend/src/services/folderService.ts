@@ -15,7 +15,7 @@ const FOLDER_ENDPOINTS = {
   poles: 'folders/poles/',
   filiales: 'folders/filiales/',
   services: 'folders/services/',
-  byParent: (parentId: string | number) => `folders/folders?parent_id=${parentId}`,
+  byParent: (parentId: string | number) => `folders?parent_id=${parentId}`,
 } as const;
 
 export const folderService = {

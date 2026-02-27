@@ -1,11 +1,11 @@
 """
 Script de démonstration du système d'organisation automatique par Année/Mois
 """
+
 import os
 import django
-from datetime import datetime
 
-os.environ.setdefault('DJANGO_SETTINGS_MODULE', 'config.settings')
+os.environ.setdefault("DJANGO_SETTINGS_MODULE", "config.settings")
 django.setup()
 
 from apps.documents.services import DocumentService
@@ -19,12 +19,12 @@ print("=" * 60)
 print("\n🔄 Création de structures Année/Mois pour les dossiers...")
 
 dossiers_a_organiser = [
-    ('Ressources Humaines', 'Congés et Absences'),
-    ('Ressources Humaines', 'Contrats et Feuilles de Paie'),
-    ('Finance', 'Factures'),
-    ('Finance', 'Rapports Financiers'),
-    ('Informatique', 'Tickets Support'),
-    ('Ventes', 'Contrats Clients'),
+    ("Ressources Humaines", "Congés et Absences"),
+    ("Ressources Humaines", "Contrats et Feuilles de Paie"),
+    ("Finance", "Factures"),
+    ("Finance", "Rapports Financiers"),
+    ("Informatique", "Tickets Support"),
+    ("Ventes", "Contrats Clients"),
 ]
 
 for parent_name, child_name in dossiers_a_organiser:
@@ -37,12 +37,13 @@ print("\n" + "=" * 60)
 print("📁 ARBORESCENCE FINALE:")
 print("=" * 60)
 
-def print_tree(folder, prefix='', max_depth=4, current_depth=0):
+
+def print_tree(folder, prefix="", max_depth=4, current_depth=0):
     """Affiche récursivement la structure des dossiers."""
     if current_depth >= max_depth:
         return
-    
-    children = folder.children.all().order_by('name')
+
+    children = folder.children.all().order_by("name")
     for i, child in enumerate(children):
         is_last = i == len(list(children)) - 1
         current_prefix = "└── " if is_last else "├── "
@@ -50,9 +51,10 @@ def print_tree(folder, prefix='', max_depth=4, current_depth=0):
         next_prefix = prefix + ("    " if is_last else "│   ")
         print_tree(child, next_prefix, max_depth, current_depth + 1)
 
-root_folders = Folder.objects.filter(parent__isnull=True).order_by('name')
+
+root_folders = Folder.objects.filter(parent__isnull=True).order_by("name")
 for root in root_folders:
-    if root.name not in ['IT', 'RH', 'log']:  # Ignorer les anciens dossiers
+    if root.name not in ["IT", "RH", "log"]:  # Ignorer les anciens dossiers
         print(f"\n{root.name}/")
         print_tree(root)
 

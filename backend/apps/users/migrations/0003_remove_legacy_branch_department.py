@@ -6,9 +6,8 @@ from django.db import migrations
 
 
 class Migration(migrations.Migration):
-
     dependencies = [
-        ('users', '0002_add_pole_hierarchy'),
+        ("users", "0002_add_pole_hierarchy"),
     ]
 
     operations = [

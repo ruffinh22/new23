@@ -108,15 +108,12 @@ export const FolderTree: React.FC<FolderTreeProps> = ({
       setIsLoading(true)
       setError(null)
       
-      // Toujours charger les pôles racine (roots) pour tous les utilisateurs
+      // Charger les pôles racine avec leur hiérarchie complète
       const response = await apiClient.get('/folders/root/')
       let rootFolders = response.data || []
       
-      // Pour les agents non-admin, reconstruire l'arborescence avec leurs restrictions
-      if (!isAdminUser && user?.branch) {
-        // Filtrer pour afficher seulement la branche de l'agent
-        rootFolders = rootFolders.filter((folder: any) => folder.id === user.branch)
-      }
+      // TOUS les utilisateurs voient l'arborescence complète
+      // (Les agents ont besoin de voir tous les destinataires pour envoyer des documents)
       
       // Ajouter le dossier "Received" en haut de la liste pour tous les utilisateurs
       if (user?.id) {

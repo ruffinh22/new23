@@ -288,7 +288,7 @@ export function RoutingRulesManager() {
   const fetchFolders = async () => {
     try {
       // Récupérer l'arborescence complète
-      const response = await apiClient.get('/folders/folders/tree/');
+      const response = await apiClient.get('folders/tree/');
       const data = response.data;
       setFolders(data || []);
     } catch (err: any) {

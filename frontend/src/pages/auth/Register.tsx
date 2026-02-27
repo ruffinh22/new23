@@ -132,8 +132,8 @@ export const Register: React.FC = () => {
     try {
       console.log('[Register] Form data received:', JSON.stringify(data, null, 2))
       const registerData: any = {
-        first_name: data.prenom,
-        last_name: data.nom,
+        nom: data.nom,
+        prenom: data.prenom,
         matricule: data.matricule,
         email: data.email,
         password: data.password,
@@ -143,8 +143,8 @@ export const Register: React.FC = () => {
 
       // Add conditional fields
       if (data.pole) registerData.pole = parseInt(data.pole)
-      if (data.branche) registerData.branch = parseInt(data.branche)
-      if (data.departement) registerData.department = parseInt(data.departement)
+      if (data.branche) registerData.branche = parseInt(data.branche)
+      if (data.departement) registerData.departement = data.departement
 
       await registerUser(registerData)
       

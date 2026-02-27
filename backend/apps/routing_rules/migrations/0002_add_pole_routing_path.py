@@ -5,29 +5,28 @@ import django.db.models.deletion
 
 
 class Migration(migrations.Migration):
-
     dependencies = [
-        ('folders', '0001_initial'),
-        ('routing_rules', '0001_initial'),
+        ("folders", "0001_initial"),
+        ("routing_rules", "0001_initial"),
     ]
 
     operations = [
         migrations.AddField(
-            model_name='routingrule',
-            name='pole',
+            model_name="routingrule",
+            name="pole",
             field=models.ForeignKey(
                 blank=True,
-                help_text='Pôle concerné par cette règle (null = s\'applique à tous les Pôles)',
-                limit_choices_to={'folder_type': 'pole'},
+                help_text="Pôle concerné par cette règle (null = s'applique à tous les Pôles)",
+                limit_choices_to={"folder_type": "pole"},
                 null=True,
                 on_delete=django.db.models.deletion.CASCADE,
-                related_name='routing_rules_by_pole',
-                to='folders.folder'
+                related_name="routing_rules_by_pole",
+                to="folders.folder",
             ),
         ),
         migrations.AddField(
-            model_name='routingrule',
-            name='routing_path',
+            model_name="routingrule",
+            name="routing_path",
             field=models.JSONField(
                 blank=True,
                 default=None,

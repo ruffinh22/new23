@@ -5,10 +5,9 @@ from django.db import migrations
 
 
 class Migration(migrations.Migration):
-
     dependencies = [
-        ('routing_rules', '0002_add_pole_routing_path'),
-        ('users', '0002_add_pole_hierarchy'),
+        ("routing_rules", "0002_add_pole_routing_path"),
+        ("users", "0002_add_pole_hierarchy"),
     ]
 
     operations = [

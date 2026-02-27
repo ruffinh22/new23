@@ -14,47 +14,52 @@ import sys
 import django
 
 # Setup Django
-os.environ.setdefault('DJANGO_SETTINGS_MODULE', 'config.settings')
+os.environ.setdefault("DJANGO_SETTINGS_MODULE", "config.settings")
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 
 django.setup()
 
 from apps.notifications.models import Notification
 from apps.documents.models import Document
-from apps.users.models import User
 from django.contrib.auth import get_user_model
+
 
 def test_notification_system():
     """Test the notification system."""
     print("=" * 80)
     print("PRUEBA DEL SISTEMA DE NOTIFICACIONES")
     print("=" * 80)
-    
+
     # Check if notification types are updated
     print("\n1. VERIFICANDO TIPOS DE NOTIFICACIÓN:")
     print("-" * 80)
     notification_types = dict(Notification.TYPE_CHOICES)
     for key, value in notification_types.items():
         print(f"   ✓ {key}: {value}")
-    
+
     # Check required notification types
-    required_types = ['DOCUMENT_UPLOADED', 'DOCUMENT_DOWNLOADED', 'DOCUMENT_APPROVED', 'DOCUMENT_REJECTED']
+    required_types = [
+        "DOCUMENT_UPLOADED",
+        "DOCUMENT_DOWNLOADED",
+        "DOCUMENT_APPROVED",
+        "DOCUMENT_REJECTED",
+    ]
     for req_type in required_types:
         if req_type in notification_types:
             print(f"\n   ✓ {req_type} está disponible")
         else:
             print(f"\n   ✗ {req_type} NO está disponible")
-    
+
     # Count existing notifications
     print("\n2. CONTANDO NOTIFICACIONES EXISTENTES:")
     print("-" * 80)
     total_notifications = Notification.objects.count()
     print(f"   Total de notificaciones: {total_notifications}")
-    
+
     for notif_type in required_types:
         count = Notification.objects.filter(notification_type=notif_type).count()
         print(f"   - {notif_type}: {count}")
-    
+
     # Check if admins exist
     print("\n3. VERIFICANDO ADMINISTRADORES:")
     print("-" * 80)
@@ -63,7 +68,7 @@ def test_notification_system():
     print(f"   Total de administradores: {admins.count()}")
     for admin in admins:
         print(f"   - {admin.matricule}: {admin.get_full_name()} ({admin.email})")
-    
+
     # Check if agents exist
     print("\n4. VERIFICANDO AGENTES:")
     print("-" * 80)
@@ -71,21 +76,21 @@ def test_notification_system():
     print(f"   Total de agentes: {agents.count()}")
     for agent in agents[:5]:  # Show first 5
         print(f"   - {agent.matricule}: {agent.get_full_name()} ({agent.email})")
-    
+
     # Check documents
     print("\n5. VERIFICANDO DOCUMENTOS:")
     print("-" * 80)
     total_docs = Document.objects.count()
     print(f"   Total de documentos: {total_docs}")
-    
+
     docs_by_status = {}
     for doc in Document.objects.all():
         status = doc.status
         docs_by_status[status] = docs_by_status.get(status, 0) + 1
-    
+
     for status, count in docs_by_status.items():
         print(f"   - {status}: {count}")
-    
+
     print("\n" + "=" * 80)
     print("RESUMEN DEL SISTEMA DE NOTIFICACIONES:")
     print("=" * 80)
@@ -105,5 +110,6 @@ def test_notification_system():
     """)
     print("=" * 80)
 
-if __name__ == '__main__':
+
+if __name__ == "__main__":
     test_notification_system()

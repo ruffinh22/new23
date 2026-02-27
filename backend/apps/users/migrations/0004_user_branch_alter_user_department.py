@@ -5,7 +5,6 @@ import django.db.models.deletion
 
 
 class Migration(migrations.Migration):
-
     dependencies = [
         ("folders", "0008_add_system_folders_support"),
         ("users", "0003_remove_legacy_branch_department"),

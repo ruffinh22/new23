@@ -144,7 +144,7 @@ export const DocumentTypesManagement: React.FC = () => {
         is_active: editingData.is_active ?? true
       }
       const response = await apiClient.patch(`/documents/types/${editingId}/`, payload)
-      setDocumentTypes(documentTypes.map(dt => (dt.id === editingId ? response.data : dt)))
+      setDocumentTypes(documentTypes.map((dt: DocumentType) => (dt.id === editingId ? response.data : dt)))
       documentTypeService.invalidateCache()
       setSuccessMessage('Type de document mis à jour avec succès')
       setEditingId(null)
@@ -165,7 +165,7 @@ export const DocumentTypesManagement: React.FC = () => {
       setIsSaving(true)
       setError(null)
       await apiClient.delete(`/documents/types/${id}/`)
-      setDocumentTypes(documentTypes.filter(dt => dt.id !== id))
+      setDocumentTypes(documentTypes.filter((dt: DocumentType) => dt.id !== id))
       documentTypeService.invalidateCache() // Invalidate frontend cache
       setSuccessMessage('Type de document supprimé avec succès')
       setTimeout(() => setSuccessMessage(null), 3000)
@@ -505,7 +505,7 @@ export const DocumentTypesManagement: React.FC = () => {
                 </tr>
               </thead>
               <tbody className="divide-y divide-slate-200">
-                {memoizedDocumentTypes.map((dt) => (
+                {memoizedDocumentTypes.map((dt: DocumentType) => (
                   <React.Fragment key={dt.id}>
                     <tr className="hover:bg-slate-50 transition">
                       <td className="px-6 py-3 text-sm font-mono text-slate-900">{dt.name}</td>
@@ -539,7 +539,7 @@ export const DocumentTypesManagement: React.FC = () => {
                         <button
                           onClick={() => {
                             setEditingId(dt.id)
-                            setEditingData(dt)
+                            setEditingData(dt as DocumentType)
                           }}
                           className="p-2 hover:bg-blue-100 rounded transition text-blue-600"
                         >

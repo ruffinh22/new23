@@ -151,6 +151,18 @@ export const DocumentUpload: React.FC<DocumentUploadProps> = ({ isOpen = false, 
     }
   }, [services, user?.service_id])
 
+  // Load poles and users when send to recipient mode is enabled
+  useEffect(() => {
+    if (sendToRecipient && poles.length === 0) {
+      console.log('[DocumentUpload] Send to recipient enabled, loading poles...')
+      loadPoles()
+    }
+    if (sendToRecipient && users.length === 0) {
+      console.log('[DocumentUpload] Send to recipient enabled, loading users...')
+      loadUsers()
+    }
+  }, [sendToRecipient])
+
   const loadPoles = async () => {
     try {
       console.log('[DocumentUpload] Loading poles...')
@@ -479,59 +491,7 @@ export const DocumentUpload: React.FC<DocumentUploadProps> = ({ isOpen = false, 
             </div>
           )}
 
-          <div className="mb-6 p-4 bg-blue-50 border-2 border-blue-300 rounded-lg">
-            <h3 className="font-bold text-blue-800 mb-2">📁 Structure des dossiers:</h3>
-            {!sendToRecipient ? (
-              <div className="text-sm text-blue-700 space-y-2">
-                <p>
-                  Le document sera organisé selon:
-                </p>
-                <p className="ml-4 font-mono bg-blue-100 p-2 rounded">
-                  Filiale {filiale ? `(${user?.branch_name || filiale})` : ''} 
-                  {service ? ` → Service (${user?.service_name || service})` : ''} 
-                  → Type de Document {documentType ? `(${documentTypes.find(t => String(t.id) === documentType)?.display_name || documentType})` : ''}
-                </p>
-              </div>
-            ) : (
-              <div className="text-sm text-blue-700 space-y-2">
-                <p>Le document sera envoyé vers:</p>
-                {recipientType === 'pole' && (
-                  <p className="ml-4 font-mono bg-blue-100 p-2 rounded">
-                    Pôle {recipientPole ? `(${poles.find(p => p.id == recipientPole)?.name})` : '(non sélectionné)'} 
-                    → Type de Document {documentType ? `(${documentTypes.find(t => String(t.id) === documentType)?.display_name})` : ''}
-                  </p>
-                )}
-                {recipientType === 'filiale' && (
-                  <p className="ml-4 font-mono bg-blue-100 p-2 rounded">
-                    Pôle {recipientPole ? `(${poles.find(p => p.id == recipientPole)?.name})` : ''} 
-                    → Filiale {recipientFiliale ? `(${filiales.find(f => f.id == recipientFiliale)?.name})` : '(non sélectionné)'} 
-                    → Type de Document {documentType ? `(${documentTypes.find(t => String(t.id) === documentType)?.display_name})` : ''}
-                  </p>
-                )}
-                {recipientType === 'service' && (
-                  <p className="ml-4 font-mono bg-blue-100 p-2 rounded">
-                    Pôle {recipientPole ? `(${poles.find(p => p.id == recipientPole)?.name})` : ''} 
-                    → Filiale {recipientFiliale ? `(${filiales.find(f => f.id == recipientFiliale)?.name})` : ''} 
-                    → Service {recipientService ? `(${services.find(s => s.id == recipientService)?.name})` : '(non sélectionné)'} 
-                    → Type de Document {documentType ? `(${documentTypes.find(t => String(t.id) === documentType)?.display_name})` : ''}
-                  </p>
-                )}
-                {recipientType === 'user' && (
-                  <p className="ml-4 font-mono bg-blue-100 p-2 rounded">
-                    {recipientUser ? (
-                      <>
-                        Pôle (de {users.find(u => u.id == recipientUser)?.first_name} {users.find(u => u.id == recipientUser)?.last_name}) 
-                        → Filiale → Service 
-                        → Type de Document {documentType ? `(${documentTypes.find(t => String(t.id) === documentType)?.display_name})` : ''}
-                      </>
-                    ) : (
-                      'Pôle (de l\'utilisateur) → Filiale → Service → Type de Document (non sélectionné)'
-                    )}
-                  </p>
-                )}
-              </div>
-            )}
-          </div>
+
 
           <div className="space-y-6">
             {/* Titre */}
@@ -759,15 +719,15 @@ export const DocumentUpload: React.FC<DocumentUploadProps> = ({ isOpen = false, 
               )}
             </div>
 
-            {/* Pôle */}
+            {/* Pôle - Masqué si envoi à destinataire */}
+            {!sendToRecipient && (
             <div>
               <label className="block text-sm font-medium text-gray-700 mb-2">Pôle *</label>
               {isAdmin(user) ? (
                 <select
                   value={pole}
                   onChange={(e) => setPole(e.target.value)}
-                  disabled={sendToRecipient}
-                  className="w-full px-4 py-3 border-2 border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-600 focus:border-blue-600 disabled:bg-gray-100 disabled:cursor-not-allowed"
+                  className="w-full px-4 py-3 border-2 border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-600 focus:border-blue-600"
                 >
                   <option value="">Sélectionner un pôle...</option>
                   {poles.map((p) => (
@@ -786,15 +746,17 @@ export const DocumentUpload: React.FC<DocumentUploadProps> = ({ isOpen = false, 
                 </select>
               )}
             </div>
+            )}
 
-            {/* Filiale */}
+            {/* Filiale - Masqué si envoi à destinataire */}
+            {!sendToRecipient && (
             <div>
               <label className="block text-sm font-medium text-gray-700 mb-2">Filiale *</label>
               {isAdmin(user) ? (
                 <select
                   value={filiale}
                   onChange={(e) => setFiliale(e.target.value)}
-                  disabled={!pole || sendToRecipient}
+                  disabled={!pole}
                   className="w-full px-4 py-3 border-2 border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-600 focus:border-blue-600 disabled:bg-gray-100 disabled:cursor-not-allowed"
                 >
                   <option value="">{pole ? 'Sélectionner une filiale...' : 'Sélectionnez un pôle d\'abord'}</option>
@@ -814,15 +776,17 @@ export const DocumentUpload: React.FC<DocumentUploadProps> = ({ isOpen = false, 
                 </select>
               )}
             </div>
+            )}
 
-            {/* Service */}
+            {/* Service - Masqué si envoi à destinataire */}
+            {!sendToRecipient && (
             <div>
               <label className="block text-sm font-medium text-gray-700 mb-2">Service (optionnel)</label>
               {isAdmin(user) ? (
                 <select
                   value={service}
                   onChange={(e) => setService(e.target.value)}
-                  disabled={!filiale || sendToRecipient}
+                  disabled={!filiale}
                   className="w-full px-4 py-3 border-2 border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-600 focus:border-blue-600 disabled:bg-gray-100 disabled:cursor-not-allowed"
                 >
                   <option value="">{filiale ? 'Sélectionner un service...' : 'Sélectionnez une filiale d\'abord'}</option>
@@ -842,8 +806,7 @@ export const DocumentUpload: React.FC<DocumentUploadProps> = ({ isOpen = false, 
                 </select>
               )}
             </div>
-
-            {/* Type de document */}
+            )}
             <div>
               <label className="block text-sm font-medium text-gray-700 mb-2">Type de document *</label>
               <select

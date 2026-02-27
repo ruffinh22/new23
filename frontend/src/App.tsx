@@ -200,6 +200,13 @@ const adminRoutes: RouteConfig[] = [
     label: 'Gestion Événements',
     icon: '📅'
   },
+  {
+    path: '/advanced-settings',
+    element: Pages.AdvancedSettings,
+    allowedRoles: ['ADMIN', 'POLE_MANAGER', 'FILIALE_MANAGER', 'SERVICE_MANAGER'],
+    label: 'Configuration Avancée',
+    icon: '⚡'
+  },
 ]
 
 // Shared routes (accessible by both Agent and Admin)

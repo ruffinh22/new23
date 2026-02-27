@@ -127,6 +127,12 @@ const NAV_ITEMS: NavItem[] = [
     icon: <Lock size={20} />,
     roles: ['ADMIN'],
   },
+  {
+    label: 'Configuration Avancée',
+    path: '/advanced-settings',
+    icon: <Zap size={20} />,
+    roles: ['ADMIN', 'POLE_MANAGER', 'FILIALE_MANAGER', 'SERVICE_MANAGER'],
+  },
  ]
 
 export const Sidebar: React.FC<SidebarProps> = ({ 

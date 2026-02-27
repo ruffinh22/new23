@@ -8,7 +8,7 @@ import {
   LogIn, BarChart3, Bell, Folder, Shield,
   FileUp, CheckCircle, Lightbulb,
   Video, Code, Lock, Star, Sparkles,
-  Trophy, Eye, Zap
+  Trophy, Eye, Zap, Calendar, Mail, Plus
 } from 'lucide-react'
 
 interface Section {
@@ -46,6 +46,13 @@ const sections: Section[] = [
     title: 'Modèles de Documents',
     icon: <FileUp size={24} />,
     description: 'Créer et partager les templates',
+    requiredRole: 'both'
+  },
+  {
+    id: 'scheduling',
+    title: 'Calendrier & Planning',
+    icon: <Calendar size={24} />,
+    description: 'Gérer les événements et planifier les emails',
     requiredRole: 'both'
   },
   {
@@ -97,6 +104,8 @@ export const TemplatesGuide: React.FC = () => {
         return <DocumentsSection userRole={userRole} />
       case 'templates':
         return <TemplatesSection userRole={userRole} />
+      case 'scheduling':
+        return <SchedulingSection userRole={userRole} />
       case 'admin':
         return <AdminSection userRole={userRole} />
       case 'notifications':
@@ -548,11 +557,227 @@ const DocumentsSection: React.FC<SectionProps> = ({ userRole }) => (
         </div>
       )}
 
+      <div className="space-y-4">
+        <h3 className="text-2xl font-bold text-emerald-600 flex items-center gap-2">
+          <Folder size={24} /> Recevoir des Documents
+        </h3>
+        <TipBox type="success">
+          <strong>Les collègues peuvent vous envoyer des documents directement!</strong> Ils apparaîtront automatiquement dans votre dossier personnel <code className="bg-white px-2 py-1 rounded">"Received - Votre Nom"</code>
+        </TipBox>
+        <div className="space-y-3">
+          {[
+            { step: '📥', title: 'Vous Recevez un Document', desc: 'Un collègue l\'envoie directement via l\'option "Envoyer vers un destinataire" → Utilisateur' },
+            { step: '📂', title: 'Accédez à votre Dossier Reçu', desc: 'Dans la barre latérale Documents, vous verrez "Received - [Votre Nom]"' },
+            { step: '👁️', title: 'Visualisez les Documents', desc: 'Cliquez sur le document pour voir son contenu ou le télécharger' },
+            { step: '🔄', title: 'Organisez vos Reçus', desc: 'Vous pouvez créer des sous-dossiers dans "Received" pour mieux organiser' },
+            { step: '💾', title: 'Archivez ou Supprimez', desc: 'Gérez vos documents reçus - ils restent accessibles dans l\'historique' },
+          ].map((item, i) => (
+            <div key={i} className="bg-gradient-to-r from-emerald-50 to-teal-50 border border-emerald-200 p-4 rounded-lg flex gap-3">
+              <span className="text-2xl">{item.step}</span>
+              <div>
+                <p className="font-bold text-emerald-900">{item.title}</p>
+                <p className="text-sm text-emerald-800">{item.desc}</p>
+              </div>
+            </div>
+          ))}
+        </div>
+      </div>
+
+      <div className="space-y-4">
+        <h3 className="text-2xl font-bold text-blue-600 flex items-center gap-2">
+          <FileUp size={24} /> Envoyer un Document à un Destinataire
+        </h3>
+        <TipBox type="tip">
+          <strong>Comment partager un document avec un collègue:</strong>
+        </TipBox>
+        <div className="space-y-3">
+          {[
+            { step: '1️⃣', title: 'Ouvrez le formulaire de création', desc: 'Documents → "Nouveau Document" (bouton "Uploader un Document")' },
+            { step: '2️⃣', title: 'Activez "Envoyer vers un destinataire"', desc: 'Toggle le switch bleu: "📤 Envoyer vers un destinataire"' },
+            { step: '3️⃣', title: 'Sélectionnez le type de destinataire', desc: 'Choisissez entre: 🌍 Pôle, 🏢 Filiale, 📂 Service, ou 👤 Utilisateur' },
+            { step: '4️⃣', title: 'Sélectionnez le destinataire', desc: 'Choisissez le nom de l\'utilisateur dans la liste déroulante' },
+            { step: '5️⃣', title: 'Uploadez et validez', desc: 'Le document sera directement placé dans le dossier spécial du destinataire' },
+          ].map((item, i) => (
+            <div key={i} className="bg-gradient-to-r from-blue-50 to-indigo-50 border border-blue-200 p-4 rounded-lg flex gap-3">
+              <span className="text-2xl">{item.step}</span>
+              <div>
+                <p className="font-bold text-blue-900">{item.title}</p>
+                <p className="text-sm text-blue-800">{item.desc}</p>
+              </div>
+            </div>
+          ))}
+        </div>
+        <div className="bg-gradient-to-br from-amber-50 to-orange-50 border border-amber-200 p-4 rounded-lg">
+          <p className="font-bold text-amber-900 mb-2">⚡ Important</p>
+          <ul className="text-sm text-amber-800 space-y-1">
+            <li>• Quand vous envoyez vers un destinataire, les champs "Pôle", "Filiale" et "Service" sont masqués (ce n'est pas nécessaire)</li>
+            <li>• Le destinataire recevra le document IMMÉDIATEMENT dans son dossier "Received - [Son Nom]"</li>
+            <li>• Le document ne subit PAS les routages automatiques habituels</li>
+            <li>• Le destinataire peut visualiser, télécharger et archiver le document</li>
+          </ul>
+        </div>
+      </div>
+
       <div className="bg-gradient-to-br from-slate-100 to-slate-200 rounded-lg p-8 text-center border-2 border-dashed border-slate-400 h-64 flex items-center justify-center">
         <div>
           <Video className="mx-auto text-slate-500 mb-3" size={48} />
           <p className="text-slate-600 font-medium">📹 VIDEO TUTORIAL: Upload & Gestion des Documents</p>
           <p className="text-sm text-slate-500 mt-2">Durée: 7 minutes</p>
+        </div>
+      </div>
+    </div>
+  </div>
+)
+
+const SchedulingSection: React.FC<SectionProps> = ({ userRole }) => (
+  <div className="space-y-8">
+    <div className="relative">
+      <div className="absolute inset-0 bg-gradient-to-r from-rose-500/5 to-red-500/5 rounded-2xl" />
+      <div className="relative">
+        <h2 className="text-4xl font-bold bg-gradient-to-r from-rose-600 to-red-600 bg-clip-text text-transparent mb-2">
+          📅 Calendrier & Planification
+        </h2>
+        <p className="text-secondary-700">Organisez vos événements et planifiez vos envois emails</p>
+      </div>
+    </div>
+
+    <div className="space-y-6">
+      <div className="space-y-4">
+        <h3 className="text-2xl font-bold text-rose-600 flex items-center gap-2">
+          <Calendar size={24} /> Calendrier Central
+        </h3>
+        <TipBox type="success">
+          <strong>Consultez tous les événements et emails planifiés</strong> au même endroit. Vue mensuelle intuitive avec filtres intelligents.
+        </TipBox>
+        <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+          <div className="bg-gradient-to-br from-rose-50 to-red-50 border border-rose-200 p-4 rounded-lg">
+            <p className="font-bold text-rose-900 mb-2">📊 Vue Mensuelle</p>
+            <p className="text-sm text-rose-800">
+              Grille traditionnelle avec tous les événements du mois. Jours surlignés selon l'importance des événements.
+            </p>
+          </div>
+          <div className="bg-gradient-to-br from-orange-50 to-amber-50 border border-orange-200 p-4 rounded-lg">
+            <p className="font-bold text-orange-900 mb-2">📋 Liste À Venir</p>
+            <p className="text-sm text-orange-800">
+              Tous les événements à venir triés par date. Statuts visuels pour une identification rapide.
+            </p>
+          </div>
+        </div>
+        <div className="space-y-3">
+          {[
+            { icon: '🖱️', step: 'Naviguez', desc: 'Utilisez les flèches pour passer d\'un mois à l\'autre' },
+            { icon: '👁️', step: 'Explorez', desc: 'Passez la souris sur un jour pour voir les événements. Cliquez pour plus de détails' },
+            { icon: '📌', step: 'Épinglez', desc: 'Le jour actuel est surlighté en rouge avec une barre supérieure visuelle' },
+            { icon: '🎨', step: 'Identifiez', desc: 'Code couleur: points bleus pour emails, points rouges pour événements' },
+          ].map((item, i) => (
+            <div key={i} className="bg-gradient-to-r from-rose-50 to-pink-50 border border-rose-200 p-3 rounded-lg flex gap-3">
+              <span className="text-2xl">{item.icon}</span>
+              <div>
+                <p className="font-bold text-rose-900 text-sm">{item.step}</p>
+                <p className="text-xs text-rose-800">{item.desc}</p>
+              </div>
+            </div>
+          ))}
+        </div>
+      </div>
+
+      <div className="space-y-4">
+        <h3 className="text-2xl font-bold text-blue-600 flex items-center gap-2">
+          <Plus size={24} /> Créer de Nouveaux Événements
+        </h3>
+        <TipBox type="tip">
+          <strong>Tous les utilisateurs peuvent créer des événements personnels.</strong> Les événements publics sont visibles par tous.
+        </TipBox>
+        <div className="space-y-3">
+          {[
+            { step: '1️⃣', title: 'Cliquez sur "Nouvel événement"', desc: 'Bouton rouge en haut à droite du calendrier' },
+            { step: '2️⃣', title: 'Remplissez les informations', desc: 'Titre (obligatoire) et date (obligatoire)' },
+            { step: '3️⃣', title: 'Ajoutez les détails', desc: 'Horaires optionnels, lieu, description détaillée' },
+            { step: '4️⃣', title: 'Définissez la visibilité', desc: 'Privé (vous seul) ou Public (tous les utilisateurs)' },
+            { step: '5️⃣', title: 'Validez la création', desc: 'Cliquez "Créer l\'événement". L\'événement apparaît immédiatement en calendrier' },
+          ].map((item, i) => (
+            <div key={i} className="bg-gradient-to-r from-blue-50 to-cyan-50 border border-blue-200 p-4 rounded-lg flex gap-3">
+              <span className="text-2xl">{item.step}</span>
+              <div>
+                <p className="font-bold text-blue-900">{item.title}</p>
+                <p className="text-sm text-blue-800">{item.desc}</p>
+              </div>
+            </div>
+          ))}
+        </div>
+      </div>
+
+      {userRole === 'admin' && (
+        <div className="space-y-4">
+          <h3 className="text-2xl font-bold text-purple-600 flex items-center gap-2">
+            <Mail size={24} /> Planification des Emails
+          </h3>
+          <TipBox type="info">
+            <strong>🔐 Fonction réservée aux administrateurs et managers</strong> - Planifiez des envois d'emails en masse à certains utilisateurs ou départements.
+          </TipBox>
+          <div className="space-y-3">
+            {[
+              { step: '1️⃣', title: 'Accédez à la planification', desc: 'Calendrier → Bouton "Planification emails" (réservé aux managers)' },
+              { step: '2️⃣', title: 'Créez un nouvel email', desc: 'Remplissez l\'objet, le corps du message, destinataires' },
+              { step: '3️⃣', title: 'Définissez des règles', desc: 'Filtrez par département, pôle, filiale ou utilisateurs spécifiques' },
+              { step: '4️⃣', title: 'Planifiez la date/heure', desc: 'L\'email s\'enverra automatiquement à l\'heure programmée' },
+              { step: '5️⃣', title: 'Suivi', desc: 'Voir le statut: Brouillon → Programmé → Envoyé. Annulation possible avant l\'envoi' },
+            ].map((item, i) => (
+              <div key={i} className="bg-gradient-to-r from-purple-50 to-violet-50 border border-purple-200 p-4 rounded-lg flex gap-3">
+                <span className="text-2xl">{item.step}</span>
+                <div>
+                  <p className="font-bold text-purple-900">{item.title}</p>
+                  <p className="text-sm text-purple-800">{item.desc}</p>
+                </div>
+              </div>
+            ))}
+          </div>
+          <div className="bg-gradient-to-br from-orange-50 to-amber-50 border border-orange-200 p-4 rounded-lg">
+            <p className="font-bold text-orange-900 mb-3">⚡ Statuts des Emails</p>
+            <div className="space-y-2 text-sm text-orange-800">
+              <div><span className="font-bold text-gray-500">Brouillon:</span> Email en cours de rédaction (modifiable)</div>
+              <div><span className="font-bold text-blue-600">Programmé:</span> En attente de la date/heure programmée</div>
+              <div><span className="font-bold text-green-600">Envoyé:</span> Email livré avec succès</div>
+              <div><span className="font-bold text-red-600">Échoué:</span> Erreur lors de l\'envoi (impossible à renvoyer)</div>
+              <div><span className="font-bold text-purple-600">Annulé:</span> Annulation avant l\'envoi</div>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {userRole === 'admin' && (
+        <div className="space-y-4">
+          <h3 className="text-2xl font-bold text-indigo-600 flex items-center gap-2">
+            <Settings size={24} /> Gestion Complète des Événements
+          </h3>
+          <TipBox type="warning">
+            <strong>🔐 Réservé aux administrateurs</strong> - Interface complète pour créer, modifier, archiver des événements.
+          </TipBox>
+          <div className="space-y-3">
+            {[
+              '✏️ Créer des événements pour les autres utilisateurs',
+              '🔄 Modifier ou archiver des événements existants',
+              '👥 Assigner des événements à plusieurs utilisateurs',
+              '📢 Marquer comme "Événement Général" (visible par tous)',
+              '🎯 Planifier des récurrences (quotidien, hebdomadaire, mensuel)',
+              '🔐 Contrôler les permissions d\'accès',
+              '📊 Générer des rapports d\'utilisation',
+              '📤 Exporter les événements en format iCalendar',
+            ].map((item, i) => (
+              <div key={i} className="bg-indigo-50 border border-indigo-200 p-3 rounded text-indigo-800 text-sm flex items-center gap-2">
+                <span>{item.split(' ')[0]}</span>
+                <span>{item.substring(item.indexOf(' ')).trim()}</span>
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
+
+      <div className="bg-gradient-to-br from-slate-100 to-slate-200 rounded-lg p-8 text-center border-2 border-dashed border-slate-400 h-64 flex items-center justify-center">
+        <div>
+          <Video className="mx-auto text-slate-500 mb-3" size={48} />
+          <p className="text-slate-600 font-medium">📹 VIDEO: Utiliser le Calendrier</p>
+          <p className="text-sm text-slate-500 mt-2">Durée: 5 minutes</p>
         </div>
       </div>
     </div>
@@ -715,97 +940,53 @@ const AdminSection: React.FC<SectionProps> = ({ userRole }) => {
 
   const setupSteps = [
     {
-      id: 'setup-branches',
-      title: '🌍 ÉTAPE 1: Créer les Filiales (Branches)',
-      icon: '🏪',
-      description: 'Définir la structure géographique de votre organisation',
+      id: 'setup-folders',
+      title: '📁 ÉTAPE 1: Créer et Organiser les Dossiers (Hiérarchie)',
+      icon: '🗂️',
+      description: 'Définir la hiérarchie des dossiers (Pôle → Filiale → Service)',
       content: (
         <div className="space-y-4">
           <TipBox type="info">
-            <strong>Filiale = Localisation Géographique</strong> (ex: Siège social Dakar, Filiale Saint-Louis, Filiale Kaolack)
+            <strong>Dossiers = Hiérarchie d'organisation</strong> (ex: Pôle Operations → Filiale Dakar → Service RH)
           </TipBox>
           
           <div className="bg-gradient-to-br from-blue-50 to-cyan-50 border border-blue-200 p-6 rounded-lg space-y-4">
-            <p className="font-bold text-blue-900">📍 Comment Créer une Filiale:</p>
+            <p className="font-bold text-blue-900">📁 Comment Créer et Organiser les Dossiers:</p>
             <ol className="space-y-3 text-blue-800 text-sm">
               <li className="flex gap-3">
                 <span className="font-bold bg-blue-200 text-blue-900 w-6 h-6 rounded-full flex items-center justify-center flex-shrink-0">1</span>
-                <span>Clique sur le menu <strong>Filiales</strong> dans la barre latérale</span>
+                <span>Cliquez sur le menu <strong>Folders</strong> dans la barre latérale</span>
               </li>
               <li className="flex gap-3">
                 <span className="font-bold bg-blue-200 text-blue-900 w-6 h-6 rounded-full flex items-center justify-center flex-shrink-0">2</span>
-                <span>Cliquez sur le bouton <strong>+ Créer une Filiale</strong> (en haut à droite)</span>
+                <span>Créez d'abord les <strong>Pôles</strong> (divisions principales de votre organisation)</span>
               </li>
               <li className="flex gap-3">
                 <span className="font-bold bg-blue-200 text-blue-900 w-6 h-6 rounded-full flex items-center justify-center flex-shrink-0">3</span>
-                <span>Remplissez les champs: <strong>Code</strong> (ex: HQ), <strong>Nom</strong> (ex: Siège Dakar), <strong>Adresse</strong>, <strong>Téléphone</strong></span>
+                <span>Sous chaque Pôle, créez les <strong>Filiales</strong> (localisations/branches)</span>
               </li>
               <li className="flex gap-3">
                 <span className="font-bold bg-blue-200 text-blue-900 w-6 h-6 rounded-full flex items-center justify-center flex-shrink-0">4</span>
-                <span>Cliquez le bouton <strong>Enregistrer</strong> en bas du formulaire</span>
+                <span>Sous chaque Filiale, créez les <strong>Services</strong> (divisions fonctionnelles)</span>
+              </li>
+              <li className="flex gap-3">
+                <span className="font-bold bg-blue-200 text-blue-900 w-6 h-6 rounded-full flex items-center justify-center flex-shrink-0">5</span>
+                <span>Cliquez <strong>Enregistrer</strong> ou <strong>Créer</strong> pour confirmer chaque dossier</span>
               </li>
             </ol>
           </div>
 
           <div className="bg-white border border-blue-200 p-4 rounded space-y-2">
-            <p className="font-bold text-blue-900">Exemple de Structure:</p>
-            <div className="text-sm text-blue-800 space-y-1 pl-4 border-l-4 border-blue-300">
-              <p>🏪 SGDRA Senegal (Siège)</p>
-              <p className="ml-4">└─ 🏢 Dakar</p>
-              <p className="ml-4">└─ 🏢 Saint-Louis</p>
-              <p className="ml-4">└─ 🏢 Kaolack</p>
-            </div>
-          </div>
-        </div>
-      )
-    },
-    {
-      id: 'setup-departments',
-      title: '🏢 ÉTAPE 2: Créer les Départements dans chaque Filiale',
-      icon: '📊',
-      description: 'Organisez par fonctions dans chaque filiale',
-      content: (
-        <div className="space-y-4">
-          <TipBox type="info">
-            <strong>Département = Fonction Métier</strong> (ex: RH, Finance, Logistique, IT) au sein d'une filiale
-          </TipBox>
-          
-          <div className="bg-gradient-to-br from-purple-50 to-indigo-50 border border-purple-200 p-6 rounded-lg space-y-4">
-            <p className="font-bold text-purple-900">📋 Comment Créer un Département:</p>
-            <ol className="space-y-3 text-purple-800 text-sm">
-              <li className="flex gap-3">
-                <span className="font-bold bg-purple-200 text-purple-900 w-6 h-6 rounded-full flex items-center justify-center flex-shrink-0">1</span>
-                <span>Cliquez sur le menu <strong>Départements</strong> dans la barre latérale</span>
-              </li>
-              <li className="flex gap-3">
-                <span className="font-bold bg-purple-200 text-purple-900 w-6 h-6 rounded-full flex items-center justify-center flex-shrink-0">2</span>
-                <span>Cliquez sur le bouton <strong>+ Créer un Département</strong></span>
-              </li>
-              <li className="flex gap-3">
-                <span className="font-bold bg-purple-200 text-purple-900 w-6 h-6 rounded-full flex items-center justify-center flex-shrink-0">3</span>
-                <span>Sélectionnez d'abord une <strong>Filiale</strong> dans la dropdown</span>
-              </li>
-              <li className="flex gap-3">
-                <span className="font-bold bg-purple-200 text-purple-900 w-6 h-6 rounded-full flex items-center justify-center flex-shrink-0">4</span>
-                <span>Entrez: <strong>Code</strong> (ex: RH), <strong>Nom</strong> (ex: Ressources Humaines), choisissez un <strong>Responsable</strong></span>
-              </li>
-              <li className="flex gap-3">
-                <span className="font-bold bg-purple-200 text-purple-900 w-6 h-6 rounded-full flex items-center justify-center flex-shrink-0">5</span>
-                <span>Cliquez <strong>Enregistrer</strong> pour confirmer</span>
-              </li>
-            </ol>
-          </div>
-
-          <div className="bg-white border border-purple-200 p-4 rounded space-y-2">
-            <p className="font-bold text-purple-900">Exemple de Structure Complète:</p>
-            <div className="text-sm text-purple-800 space-y-1 pl-4 border-l-4 border-purple-300 font-mono">
-              <p>🏪 Filiale Dakar</p>
-              <p className="ml-4">├─ 📊 Département RH</p>
-              <p className="ml-4">├─ 📊 Département Finance</p>
-              <p className="ml-4">└─ 📊 Département IT</p>
-              <p>🏪 Filiale Saint-Louis</p>
-              <p className="ml-4">├─ 📊 Département Logistique</p>
-              <p className="ml-4">└─ 📊 Département Ventes</p>
+            <p className="font-bold text-blue-900">Exemple de Hiérarchie:</p>
+            <div className="text-sm text-blue-800 space-y-1 pl-4 border-l-4 border-blue-300 font-mono">
+              <p>📦 Pôle Operations</p>
+              <p className="ml-4">└─ 🏪 Filiale Dakar</p>
+              <p className="ml-8">├─ 📊 Service RH</p>
+              <p className="ml-8">├─ 💰 Service Finance</p>
+              <p className="ml-8">└─ 🚚 Service Logistique</p>
+              <p className="ml-4">└─ 🏪 Filiale Saint-Louis</p>
+              <p className="ml-8">├─ 📊 Service RH</p>
+              <p className="ml-8">└─ 🎯 Service Ventes</p>
             </div>
           </div>
         </div>
@@ -813,7 +994,7 @@ const AdminSection: React.FC<SectionProps> = ({ userRole }) => {
     },
     {
       id: 'setup-document-types',
-      title: '📄 ÉTAPE 3: Créer les Types de Documents',
+      title: '📄 ÉTAPE 2: Créer les Types de Documents',
       icon: '📋',
       description: 'Catégoriser les types de documents acceptés',
       content: (
@@ -827,11 +1008,11 @@ const AdminSection: React.FC<SectionProps> = ({ userRole }) => {
             <ol className="space-y-3 text-green-800 text-sm">
               <li className="flex gap-3">
                 <span className="font-bold bg-green-200 text-green-900 w-6 h-6 rounded-full flex items-center justify-center flex-shrink-0">1</span>
-                <span>Cliquez sur le menu <strong>Types de Documents</strong> dans la barre latérale</span>
+                <span>Cliquez sur le menu <strong>Types de Documents</strong> dans la barre latérale (Administration)</span>
               </li>
               <li className="flex gap-3">
                 <span className="font-bold bg-green-200 text-green-900 w-6 h-6 rounded-full flex items-center justify-center flex-shrink-0">2</span>
-                <span>Cliquez sur le bouton <strong>+ Ajouter Type</strong></span>
+                <span>Cliquez sur le bouton <strong>+ Créer Type Document</strong> ou <strong>+ Ajouter</strong></span>
               </li>
               <li className="flex gap-3">
                 <span className="font-bold bg-green-200 text-green-900 w-6 h-6 rounded-full flex items-center justify-center flex-shrink-0">3</span>
@@ -866,7 +1047,7 @@ const AdminSection: React.FC<SectionProps> = ({ userRole }) => {
     },
     {
       id: 'setup-file-types',
-      title: '📁 ÉTAPE 4: Configurer les Types de Fichiers',
+      title: '⚙️ ÉTAPE 3: Configurer les Types de Fichiers (Formats)',
       icon: '⚙️',
       description: 'Définir les formats acceptés et leurs validations',
       content: (
@@ -880,11 +1061,11 @@ const AdminSection: React.FC<SectionProps> = ({ userRole }) => {
             <ol className="space-y-3 text-orange-800 text-sm">
               <li className="flex gap-3">
                 <span className="font-bold bg-orange-200 text-orange-900 w-6 h-6 rounded-full flex items-center justify-center flex-shrink-0">1</span>
-                <span>Cliquez sur le menu <strong>Configuration Types</strong> dans la barre latérale</span>
+                <span>Cliquez sur le menu <strong>File Type Config</strong> dans la barre latérale (Administration)</span>
               </li>
               <li className="flex gap-3">
                 <span className="font-bold bg-orange-200 text-orange-900 w-6 h-6 rounded-full flex items-center justify-center flex-shrink-0">2</span>
-                <span>Consultez les types existants ou Cliquez <strong>+ Ajouter Format</strong> pour en créer un nouveau</span>
+                <span>Consultez les formats existants ou cliquez <strong>+ Ajouter Format</strong> pour en créer un nouveau</span>
               </li>
               <li className="flex gap-3">
                 <span className="font-bold bg-orange-200 text-orange-900 w-6 h-6 rounded-full flex items-center justify-center flex-shrink-0">3</span>
@@ -915,7 +1096,7 @@ const AdminSection: React.FC<SectionProps> = ({ userRole }) => {
     },
     {
       id: 'setup-associations',
-      title: '🔗 ÉTAPE 5: Associer Types Fichiers → Types Documents',
+      title: '🔗 ÉTAPE 4: Configurer les Règles de Routage et Associations',
       icon: '🔗',
       description: 'Lier les formats acceptés à chaque type de document',
       content: (
@@ -929,23 +1110,23 @@ const AdminSection: React.FC<SectionProps> = ({ userRole }) => {
             <ol className="space-y-3 text-indigo-800 text-sm">
               <li className="flex gap-3">
                 <span className="font-bold bg-indigo-200 text-indigo-900 w-6 h-6 rounded-full flex items-center justify-center flex-shrink-0">1</span>
-                <span>Cliquez sur le menu <strong>Exigences Types</strong> dans la barre latérale</span>
+                <span>Cliquez sur le menu <strong>Routing Rules</strong> dans la barre latérale (Administration)</span>
               </li>
               <li className="flex gap-3">
                 <span className="font-bold bg-indigo-200 text-indigo-900 w-6 h-6 rounded-full flex items-center justify-center flex-shrink-0">2</span>
-                <span>Sélectionnez un <strong>Département</strong> et un <strong>Type de Document</strong> dans les filtres</span>
+                <span>Créez une nouvelle règle: sélectionnez un <strong>Service/Dossier source</strong> et un <strong>Type de Document</strong></span>
               </li>
               <li className="flex gap-3">
                 <span className="font-bold bg-indigo-200 text-indigo-900 w-6 h-6 rounded-full flex items-center justify-center flex-shrink-0">3</span>
-                <span>Cliquez <strong>+ Ajouter Format Accepté</strong> ou <strong>+ Ajouter Format</strong></span>
+                <span>Définissez le <strong>Dossier de destination</strong> où les documents de ce type seront routés automatiquement</span>
               </li>
               <li className="flex gap-3">
                 <span className="font-bold bg-indigo-200 text-indigo-900 w-6 h-6 rounded-full flex items-center justify-center flex-shrink-0">4</span>
-                <span>Sélectionnez le format (PDF, XLSX, DOCX, etc.) dans la dropdown et confirmez</span>
+                <span>Optionnel: Configurez des <strong>conditions supplémentaires</strong> (par utilisateur, zone horaire, etc.)</span>
               </li>
               <li className="flex gap-3">
                 <span className="font-bold bg-indigo-200 text-indigo-900 w-6 h-6 rounded-full flex items-center justify-center flex-shrink-0">5</span>
-                <span>Cliquez <strong>Enregistrer</strong> ou <strong>Confirmer</strong> pour valider la liaison</span>
+                <span>Cliquez <strong>Enregistrer</strong> ou <strong>Créer la Règle</strong> pour activer le routage</span>
               </li>
             </ol>
           </div>
@@ -970,7 +1151,7 @@ const AdminSection: React.FC<SectionProps> = ({ userRole }) => {
     },
     {
       id: 'promote-to-admin',
-      title: '👑 ÉTAPE 6: Promouvoir un Agent en Administrateur',
+      title: '👑 ÉTAPE 5: Gérer les Utilisateurs et Promouvoir en Administrateur',
       icon: '⬆️',
       description: 'Changer le rôle après l\'inscription',
       content: (
@@ -1025,12 +1206,150 @@ const AdminSection: React.FC<SectionProps> = ({ userRole }) => {
             <p className="font-bold text-red-900">Après Promotion:</p>
             <div className="text-sm text-red-800 space-y-2">
               <p>✓ Accès au menu <strong>Admin</strong> (onglet supplémentaire)</p>
-              <p>✓ Voir tous les utilisateurs, départements, règles de routage</p>
+              <p>✓ Voir tous les utilisateurs, dossiers, règles de routage</p>
               <p>✓ Créer des types de documents, configurer fichiers</p>
               <p>✓ Voir les logs d'audit et rapports complets</p>
               <p>✗ Ne peut pas revenir en AGENT (demander à super-admin)</p>
             </div>
           </div>
+        </div>
+      )
+    },
+    {
+      id: 'audit-logs',
+      title: '🔒 ÉTAPE 6 (Optionnel): Consulter les Logs d\'Audit',
+      icon: '📋',
+      description: 'Vérifier toutes les actions effectuées dans le système',
+      content: (
+        <div className="space-y-4">
+          <TipBox type="info">
+            <strong>Audit Logs = Historique complet</strong> de toutes les actions: créations, modifications, suppressions, téléchargements, erreurs
+          </TipBox>
+          
+          <div className="bg-gradient-to-br from-slate-50 to-gray-50 border border-slate-200 p-6 rounded-lg space-y-4">
+            <p className="font-bold text-slate-900">📋 Comment Consulter les Logs d'Audit:</p>
+            <ol className="space-y-3 text-slate-800 text-sm">
+              <li className="flex gap-3">
+                <span className="font-bold bg-slate-200 text-slate-900 w-6 h-6 rounded-full flex items-center justify-center flex-shrink-0">1</span>
+                <span>Cliquez sur le menu <strong>Audit Logs</strong> dans la barre latérale (Administration)</span>
+              </li>
+              <li className="flex gap-3">
+                <span className="font-bold bg-slate-200 text-slate-900 w-6 h-6 rounded-full flex items-center justify-center flex-shrink-0">2</span>
+                <span>Vous verrez une liste complète de toutes les actions:</span>
+              </li>
+              <li className="ml-8 text-xs text-slate-700 space-y-1">
+                <p>📝 <strong>Créations:</strong> nouveau document, nouvel utilisateur, nouveau type de document</p>
+                <p>✏️ <strong>Modifications:</strong> mise à jour de données, changements de rôle</p>
+                <p>🗑️ <strong>Suppressions:</strong> documents, utilisateurs et configurations supprimés</p>
+                <p>📥 <strong>Téléchargements:</strong> fichiers téléchargés pour consultation</p>
+                <p>⚠️ <strong>Erreurs:</strong> erreurs lors du routage, validations échouées</p>
+              </li>
+              <li className="flex gap-3">
+                <span className="font-bold bg-slate-200 text-slate-900 w-6 h-6 rounded-full flex items-center justify-center flex-shrink-0">3</span>
+                <span>Utilisez les <strong>filtres</strong> pour rechercher par date, utilisateur, type d'action</span>
+              </li>
+              <li className="flex gap-3">
+                <span className="font-bold bg-slate-200 text-slate-900 w-6 h-6 rounded-full flex items-center justify-center flex-shrink-0">4</span>
+                <span>Cliquez sur une ligne pour voir les <strong>détails complets</strong> de l'action</span>
+              </li>
+            </ol>
+          </div>
+
+          <div className="bg-white border border-slate-200 p-4 rounded space-y-3">
+            <p className="font-bold text-slate-900">Informations Disponibles dans les Logs:</p>
+            <div className="text-sm text-slate-800 space-y-2">
+              <div className="bg-slate-50 p-3 rounded">
+                <p className="font-bold">🕐 <strong>Timestamp:</strong> Date et heure exacte de l'action</p>
+              </div>
+              <div className="bg-slate-50 p-3 rounded">
+                <p className="font-bold">👤 <strong>Utilisateur:</strong> Qui a effectué l'action</p>
+              </div>
+              <div className="bg-slate-50 p-3 rounded">
+                <p className="font-bold">⚡ <strong>Action:</strong> Type d'action (CREATE, UPDATE, DELETE, DOWNLOAD)</p>
+              </div>
+              <div className="bg-slate-50 p-3 rounded">
+                <p className="font-bold">📄 <strong>Ressource:</strong> Quel élément a été modifié (Document, User, DocType)</p>
+              </div>
+              <div className="bg-slate-50 p-3 rounded">
+                <p className="font-bold">📊 <strong>Statut:</strong> Succès (✓) ou Erreur (✗)</p>
+              </div>
+            </div>
+          </div>
+
+          <TipBox type="success">
+            💡 Utilisez les logs régulièrement pour vérifier la conformité, identifier les problèmes et audit les accès aux documents sensibles.
+          </TipBox>
+        </div>
+      )
+    },
+    {
+      id: 'settings-advanced',
+      title: '⚡ ÉTAPE 7 (Optionnel): Configuration Avancée du Système',
+      icon: '⚙️',
+      description: 'Ajuster les paramètres globaux du système',
+      content: (
+        <div className="space-y-4">
+          <TipBox type="warning">
+            <strong>⚠️ Attention!</strong> Les paramètres avancés affectent le fonctionnement global du système. À configurer avec soin!
+          </TipBox>
+          
+          <div className="bg-gradient-to-br from-indigo-50 to-blue-50 border border-indigo-200 p-6 rounded-lg space-y-4">
+            <p className="font-bold text-indigo-900">⚙️ Comment Accéder à la Configuration Avancée:</p>
+            <ol className="space-y-3 text-indigo-800 text-sm">
+              <li className="flex gap-3">
+                <span className="font-bold bg-indigo-200 text-indigo-900 w-6 h-6 rounded-full flex items-center justify-center flex-shrink-0">1</span>
+                <span>(Optionnel) Accédez à <strong>Django Admin</strong> (URL: /admin/) si vous avez les droits super-admin</span>
+              </li>
+              <li className="flex gap-3">
+                <span className="font-bold bg-indigo-200 text-indigo-900 w-6 h-6 rounded-full flex items-center justify-center flex-shrink-0">2</span>
+                <span>Les paramètres principaux sont gérés via des <strong>variables d'environnement</strong> ou le fichier <strong>settings.py</strong> (backend)</span>
+              </li>
+              <li className="flex gap-3">
+                <span className="font-bold bg-indigo-200 text-indigo-900 w-6 h-6 rounded-full flex items-center justify-center flex-shrink-0">3</span>
+                <span>Contactez l'équipe technique pour modifier les paramètres critiques</span>
+              </li>
+            </ol>
+          </div>
+
+          <div className="bg-white border border-indigo-200 p-4 rounded space-y-3">
+            <p className="font-bold text-indigo-900">Paramètres Configurable:</p>
+            <div className="text-sm text-indigo-800 space-y-2">
+              <div className="bg-indigo-50 p-3 rounded border-l-4 border-indigo-300">
+                <p className="font-bold">🌍 <strong>Fuseau Horaire (TIMEZONE):</strong></p>
+                <p className="text-xs">Exemple: Africa/Dakar, Africa/Lagos</p>
+                <p className="text-xs">Affecte: Tous les timestamps, planifications emails</p>
+              </div>
+              <div className="bg-indigo-50 p-3 rounded border-l-4 border-indigo-300">
+                <p className="font-bold">📅 <strong>Format de Date (DATE_FORMAT):</strong></p>
+                <p className="text-xs">Exemple: dd/mm/yyyy, yyyy-mm-dd</p>
+                <p className="text-xs">Affecte: Affichage partout dans l'interface</p>
+              </div>
+              <div className="bg-indigo-50 p-3 rounded border-l-4 border-indigo-300">
+                <p className="font-bold">💾 <strong>Limites de Stockage (MAX_UPLOAD_SIZE):</strong></p>
+                <p className="text-xs">Exemple: 100MB par document, 1GB par utilisateur</p>
+                <p className="text-xs">Affecte: Validation lors de l'upload</p>
+              </div>
+              <div className="bg-indigo-50 p-3 rounded border-l-4 border-indigo-300">
+                <p className="font-bold">📧 <strong>Configuration SMTP (Email):</strong></p>
+                <p className="text-xs">Email serveur: smtp.ovh.net, Port: 465, SSL: True</p>
+                <p className="text-xs">Affecte: Envoi de notifications et planifications</p>
+              </div>
+              <div className="bg-indigo-50 p-3 rounded border-l-4 border-indigo-300">
+                <p className="font-bold">♻️ <strong>Rétention des Données (DATA_RETENTION):</strong></p>
+                <p className="text-xs">Exemple: Garder logs 90 jours, documents 5 ans</p>
+                <p className="text-xs">Affecte: Nettoyage automatique des données anciennes</p>
+              </div>
+              <div className="bg-indigo-50 p-3 rounded border-l-4 border-indigo-300">
+                <p className="font-bold">🔗 <strong>Intégrations (EXTERNAL_APIS):</strong></p>
+                <p className="text-xs">APIs externes, webhooks, systèmes tiers</p>
+                <p className="text-xs">Affecte: Synchronisation avec autres outils</p>
+              </div>
+            </div>
+          </div>
+
+          <TipBox type="success">
+            💡 Les changements de configuration nécessitent souvent un redémarrage du serveur. Coordonnez avec l'équipe technique pour les modifications critiques.
+          </TipBox>
         </div>
       )
     },
@@ -1049,7 +1368,7 @@ const AdminSection: React.FC<SectionProps> = ({ userRole }) => {
       </div>
 
       <TipBox type="warning">
-        <strong>⚠️ Important!</strong> Suivez ces étapes dans l'ordre. La configuration du système dépend de la hiérarchie: Filiales → Départements → Types Documents → Types Fichiers → Associations.
+        <strong>⚠️ Important!</strong> Suivez les étapes 1-6 dans l'ordre. La configuration du système dépend de la hiérarchie: Dossiers (Pôle → Filiale → Service) → Types Documents → Types Fichiers → Routing Rules → Utilisateurs → Audit Logs. L'étape 7 (Configuration Avancée) est optionnelle.
       </TipBox>
 
       {/* Setup Steps Accordion */}
@@ -1100,103 +1419,119 @@ const AdminSection: React.FC<SectionProps> = ({ userRole }) => {
           ]
         },
         {
-          title: '🏢 Gestion des Départements',
-          icon: '🏢',
-          description: 'Organiser la structure organisationnelle',
-          items: [
-            '✓ Créer la structure hiérarchique des départements',
-            '✓ Définir le routage automatique pour chaque département',
-            '✓ Assigner les responsables et chefs de service',
-            '✓ Configurer les permissions d\'accès',
-            '✓ Activer/Désactiver les départements',
-            '✓ Archiver les anciens départements',
-            '✓ Voir les statistiques par département',
-          ]
-        },
-        {
-          title: '📁 Gestion de la Structure de Dossiers',
+          title: '📁 Gestion de la Structure Hiérarchique (Folders)',
           icon: '📁',
-          description: 'Organiser les arborescences documentaires',
+          description: 'Organiser Pôle → Filiale → Service',
           items: [
-            '✓ Créer la hiérarchie complète des dossiers',
-            '✓ Assigner les responsables de dossiers',
-            '✓ Configurer les permissions (lecture/écriture/suppression)',
-            '✓ Définir les quotas de stockage par dossier',
-            '✓ Archiver les anciens dossiers',
-            '✓ Supprimer les doublons',
-            '✓ Réorganiser la structure au besoin',
+            '✓ Créer la structure hiérarchique (Pôle, Filiale, Service) via menu Folders',
+            '✓ Assigner les responsables et chefs de service',
+            '✓ Configurer les permissions d\'accès par dossier',
+            '✓ Activer/Désactiver les dossiers',
+            '✓ Archiver les anciens dossiers/services',
+            '✓ Voir les statistiques par dossier/département',
+            '✓ Gérer les quotas de stockage',
           ]
         },
         {
-          title: '🔄 Routage Automatique & Règles',
+          title: '� Routage Automatique & Règles (Routing Rules)',
           icon: '🔄',
           description: 'Configurer le flux de travail automatique',
           items: [
-            '✓ Créer des règles de routage par type de document',
-            '✓ Définir des conditions complexes (date, montant, département)',
-            '✓ Assigner automatiquement au bon bureau/département',
-            '✓ Mettre en cascade les notifications',
+            '✓ Créer des règles de routage via menu Routing Rules',
+            '✓ Lier type de document → dossier de destination',
+            '✓ Définir des conditions (département source, type document)',
+            '✓ Routage automatique vers le bon dossier/service',
             '✓ Gérer les exceptions et cas spéciaux',
-            '✓ Tester les règles avant de les activer',
-            '✓ Activer/Désactiver les règles à volonté',
+            '✓ Tester les règles avant activation',
+            '✓ Activer/Désactiver les règles',
             '✓ Voir les statistiques de routage',
           ]
         },
         {
-          title: '📋 Gestion des Modèles (Templates)',
-          icon: '📋',
-          description: 'Créer et distribuer les templates',
+          title: '� Types de Documents',
+          icon: '📄',
+          description: 'Définir et gérer les catégories de documents',
           items: [
-            '✓ Créer de nouveaux templates document',
-            '✓ Éditer les templates existants',
-            '✓ Configurer la visibilité (tous/département/groupe)',
-            '✓ Gérer les versions (v1.0, v1.1, v2.0)',
-            '✓ Définir les règles de validation',
-            '✓ Archiver les anciennes versions',
-            '✓ Publier/Maintenir les modèles',
-            '✓ Exporter les templates en masse',
+            '✓ Accéder via le menu Types de Documents (Administration)',
+            '✓ Créer de nouveaux types de documents (Attestation, Contrat, etc)',
+            '✓ Éditer les types existants',
+            '✓ Définir les champs obligatoires pour chaque type',
+            '✓ Assigner à un service/département responsable',
+            '✓ Activer/Désactiver les types selon les besoins',
+            '✓ Voir combien de documents de chaque type',
           ]
         },
         {
-          title: '📊 Rapports & Analytics',
+          title: '⚙️ Configuration Types de Fichiers (File Type Config)',
+          icon: '⚙️',
+          description: 'Configurer les formats et validations de fichiers',
+          items: [
+            '✓ Accéder via le menu File Type Config (Administration)',
+            '✓ Créer/éditer les formats acceptés (PDF, XLSX, DOCX, etc)',
+            '✓ Définir la taille maximale par format',
+            '✓ Configurer les validations (signatures, contenu, etc)',
+            '✓ Associer les formats aux types de documents',
+            '✓ Activer/Désactiver les formats selon les besoins',
+            '✓ Voir le taux d\'adoption de chaque format',
+          ]
+        },
+        {
+          title: '📋 Gestion des Modèles (Modèles)',
+          icon: '📋',
+          description: 'Créer et distribuer les templates de documents',
+          items: [
+            '✓ Accéder via le menu Modèles (Administration)',
+            '✓ Créer de nouveaux templates document',
+            '✓ Éditer et améliorer les templates existants',
+            '✓ Configurer la visibilité (tous/service/groupe)',
+            '✓ Gérer les versions (v1.0, v1.1, v2.0)',
+            '✓ Définir les règles de validation du contenu',
+            '✓ Publier/Archiver les modèles',
+          ]
+        },
+        {
+          title: '📊 Rapports & Analytics (Reports)',
           icon: '📊',
           description: 'Générer des rapports et analyser les données',
           items: [
-            '✓ Voir tous les documents uploadés (tous les utilisateurs)',
-            '✓ Générer des rapports par département',
-            '✓ Analytics d\'utilisation (uploads/mois, documents approuvés)',
-            '✓ Tracer les changements (audit trail)',
+            '✓ Accéder via le menu Reports de la barre latérale',
+            '✓ Voir tous les documents (comptabilité complète)',
+            '✓ Générer des rapports par service/dossier',
+            '✓ Analytics d\'utilisation (uploads, approbations)',
+            '✓ Voir les statistiques par type de document',
             '✓ Exporter en PDF, Excel, CSV',
-            '✓ Créer des rapports personnalisés',
-            '✓ Voir les tendances et statistiques',
+            '✓ Voir les tendances d\'utilisation',
           ]
         },
         {
-          title: '🔍 Audit & Logs',
+          title: '🔍 Audit & Logs (Audit Logs)',
           icon: '🔍',
           description: 'Suivre toutes les actions du système',
           items: [
+            '✓ Accéder via le menu Audit Logs (Administration)',
             '✓ Consulter tous les logs d\'action',
-            '✓ Voir qui a uploadé, approuvé, modifié',
-            '✓ Timestamps de chaque action',
+            '✓ Voir qui a uploadé, modifié, téléchargé',
+            '✓ Timestamps et détails de chaque action',
             '✓ Tracer les modifications de documents',
-            '✓ Archiver les logs',
-            '✓ Exporter les historiques',
+            '✓ Filtrer par date, utilisateur, type d\'action',
+            '✓ Exporter les historiques pour conformité',
           ]
         },
         {
-          title: '⚡ Configuration Avancée',
-          icon: '⚡',
+          title: '⚡ Configuration Avancée (Settings)',
+          icon: '⚙️',
           description: 'Paramètres système et configuration globale',
           items: [
-            '✓ Fuseau horaire du système',
-            '✓ Formats de date et nombre',
-            '✓ Limites de stockage',
-            '✓ Règles de conservation des données',
-            '✓ Notifications par email',
-            '✓ Intégrations externes',
-            '✓ Certificats SSL/TLS',
-            '✓ Sauvegardes automatiques',
+            '✓ Accéder via Django Admin ou Settings (si accessible)',
+            '✓ Fuseau horaire du système (Timezone)',
+            '✓ Formats de date et nombre (Locale)',
+            '✓ Limites de stockage par utilisateur/dossier',
+            '✓ Règles de conservation des données (Rétention)',
+            '✓ Configuration emails SMTP pour notifications',
+            '✓ Intégrations externes (APIs, webhooks)',
+            '✓ Logs d\'erreurs système et monitoring',
+            '✓ Permissions et rôles par défaut',
+            '✓ Sauvegardes automatiques (Backups)',
           ]
         },
       ].map((section: any, idx: number) => (

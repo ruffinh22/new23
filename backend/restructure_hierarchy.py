@@ -5,21 +5,23 @@ Script de restructuration complète:
 - Chaque Folder enfant = un Département
 - Hiérarchie: Filiale > Département > Sous-dossiers
 """
+
 import os
 import django
 
-os.environ.setdefault('DJANGO_SETTINGS_MODULE', 'config.settings')
+os.environ.setdefault("DJANGO_SETTINGS_MODULE", "config.settings")
 django.setup()
 
 from apps.users.models import Branch, Department
 from apps.folders.models import Folder
 
+
 def reset_hierarchy():
     """Réinitialise la hiérarchie complète et correctement"""
-    
+
     print("🔄 RESTRUCTURATION COMPLÈTE DE LA HIÉRARCHIE")
     print("=" * 60)
-    
+
     # 1️⃣ Nettoyer les références existantes
     print("\n1️⃣ Nettoyage des références...")
     for folder in Folder.objects.all():
@@ -27,7 +29,7 @@ def reset_hierarchy():
         if not folder.branch and not folder.department and folder.parent is None:
             print(f"  🗑️ Suppression du dossier orphelin: {folder.name}")
             folder.delete()
-    
+
     # 2️⃣ Créer/réorganiser les Filiales au niveau racine
     print("\n2️⃣ Réorganisation des Filiales (racine)...")
     for branch in Branch.objects.all():
@@ -38,7 +40,7 @@ def reset_hierarchy():
                 description=f"Filiale {branch.name}",
                 parent=None,  # Racine
                 is_active=True,
-                created_by=None
+                created_by=None,
             )
             branch.folder = folder
             branch.save()
@@ -51,7 +53,7 @@ def reset_hierarchy():
                 print(f"  ✅ {branch.name} (replacé au niveau racine)")
             else:
                 print(f"  ✓ {branch.name} (déjà à la racine)")
-    
+
     # 3️⃣ Créer/réorganiser les Départements sous les Filiales
     print("\n3️⃣ Réorganisation des Départements...")
     for dept in Department.objects.all():
@@ -62,7 +64,7 @@ def reset_hierarchy():
                 description=f"Département {dept.name}",
                 parent=dept.branch.folder if dept.branch else None,
                 is_active=True,
-                created_by=None
+                created_by=None,
             )
             dept.folder = folder
             dept.save()
@@ -81,31 +83,36 @@ def reset_hierarchy():
             else:
                 if dept.branch:
                     print(f"  ✓ {dept.name} (déjà sous {dept.branch.name})")
-    
+
     # 4️⃣ Afficher la structure finale
     print("\n" + "=" * 60)
     print("📊 STRUCTURE FINALE")
     print("=" * 60)
-    
+
     root_folders = Folder.objects.filter(parent=None)
     for root in root_folders:
-        branch = root.branch if hasattr(root, 'branch') else None
+        branch = root.branch if hasattr(root, "branch") else None
         print(f"\n📁 {root.name}" + (f" [{root.branch.code}]" if branch else ""))
-        
+
         # Afficher les sous-dossiers (départements)
         for subfolder in root.children.all():
-            dept = subfolder.department if hasattr(subfolder, 'department') else None
-            print(f"   └── {subfolder.name}" + (f" [{subfolder.department.code}]" if dept else ""))
-            
+            dept = subfolder.department if hasattr(subfolder, "department") else None
+            print(
+                f"   └── {subfolder.name}"
+                + (f" [{subfolder.department.code}]" if dept else "")
+            )
+
             # Afficher les sous-sous-dossiers
             for subsubfolder in subfolder.children.all():
                 print(f"       └── {subsubfolder.name}")
 
-if __name__ == '__main__':
+
+if __name__ == "__main__":
     try:
         reset_hierarchy()
         print("\n✅ Restructuration terminée avec succès!")
     except Exception as e:
         print(f"\n❌ Erreur: {str(e)}")
         import traceback
+
         traceback.print_exc()

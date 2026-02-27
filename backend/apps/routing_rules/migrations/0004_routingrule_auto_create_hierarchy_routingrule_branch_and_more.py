@@ -6,7 +6,6 @@ import django.db.models.deletion
 
 
 class Migration(migrations.Migration):
-
     dependencies = [
         ("folders", "0008_add_system_folders_support"),
         migrations.swappable_dependency(settings.AUTH_USER_MODEL),
